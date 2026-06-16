@@ -672,9 +672,9 @@ export function DriversPage(): JSX.Element {
 
                   <section>
                     <h3 className="font-semibold text-lg border-b pb-2 mb-4">Documents</h3>
-                    {driverDetails?.driver?.documents?.length > 0 ? (
+                    {(driverDetails?.driver?.documents?.length ?? 0) > 0 ? (
                       <div className="grid grid-cols-1 gap-3">
-                        {driverDetails.driver.documents.map((doc: Document) => {
+                        {driverDetails.driver.documents?.map((doc: Document) => {
                           const fallbackUrl = normalizeDocUrl(doc.file_url || doc.storage_url);
                           const hasFile = !!(doc.storage_url || doc.file_url);
                           const storageUrl = doc.storage_url || doc.file_url || '';

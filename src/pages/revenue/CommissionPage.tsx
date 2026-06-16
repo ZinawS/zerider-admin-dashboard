@@ -228,7 +228,7 @@ export function CommissionPage(): JSX.Element {
                   <Cell key={index} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => `${v}%`} />
+              <Tooltip formatter={(v) => v != null ? `${v}%` : ''} />
               <Legend
                 iconType="circle"
                 iconSize={10}
@@ -257,8 +257,8 @@ export function CommissionPage(): JSX.Element {
                 tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
               />
               <Tooltip
-                formatter={(v: number) =>
-                  [`$${v.toLocaleString()}`, 'Revenue']
+                formatter={(v) =>
+                  [`$${Number(v ?? 0).toLocaleString()}`, 'Revenue']
                 }
               />
               <Line
