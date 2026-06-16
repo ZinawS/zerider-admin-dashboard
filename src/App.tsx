@@ -1,0 +1,59 @@
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+
+import { Layout } from './components/Layout';
+import { LoginPage } from './pages/auth/LoginPage';
+import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { UsersPage } from './pages/users/UsersPage';
+import { UserDetailPage } from './pages/users/UserDetailPage';
+import { DriversPage } from './pages/drivers/DriversPage';
+import { PayoutsPage } from './pages/payouts/PayoutsPage';
+import { RidesPage } from './pages/rides/RidesPage';
+import { RideDetailPage } from './pages/rides/RideDetailPage';
+import { PricingPage } from './pages/pricing/PricingPage';
+import { ReportsPage } from './pages/reports/ReportsPage';
+import { RegionsPage } from './pages/regions/RegionsPage';
+import { AuditPage } from './pages/audit/AuditPage';
+import { AdminUsersPage } from './pages/admin-users/AdminUsersPage';
+import { ContentPage } from './pages/content/ContentPage';
+import { SettingsPage } from './pages/settings/SettingsPage';
+import { GamificationPage } from './pages/gamification/GamificationPage';
+import { DeliveryPage } from './pages/delivery/DeliveryPage';
+import { MarketplacePage } from './pages/marketplace/MarketplacePage';
+import { SubscriptionsPage } from './pages/revenue/SubscriptionsPage';
+import { FeaturedListingsPage } from './pages/revenue/FeaturedListingsPage';
+import { CommissionPage } from './pages/revenue/CommissionPage';
+import { useAuthStore } from './stores/auth.store';
+
+export function App(): JSX.Element {
+  const isAuthed = useAuthStore((s) => Boolean(s.accessToken));
+  if (!isAuthed) return <LoginPage />;
+  return (
+    <Layout>
+      <Routes>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/users" element={<UsersPage />} />
+        <Route path="/users/:id" element={<UserDetailPage />} />
+        <Route path="/drivers" element={<DriversPage />} />
+            <Route path="/payouts" element={<PayoutsPage />} />
+        <Route path="/rides" element={<RidesPage />} />
+        <Route path="/rides/:id" element={<RideDetailPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/regions" element={<RegionsPage />} />
+        <Route path="/audit" element={<AuditPage />} />
+        <Route path="/admin-users" element={<AdminUsersPage />} />
+        <Route path="/content" element={<ContentPage />} />
+        <Route path="/gamification" element={<GamificationPage />} />
+        <Route path="/delivery" element={<DeliveryPage />} />
+        <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
+        <Route path="/revenue/featured" element={<FeaturedListingsPage />} />
+        <Route path="/revenue/commission" element={<CommissionPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </Layout>
+  );
+}

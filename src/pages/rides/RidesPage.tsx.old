@@ -1,0 +1,78 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { api } from '../../api/client';
+import { PageHeader } from '../../components/PageHeader';
+import { Table, type Column } from '../../components/Table';
+
+interface Ride {
+  id: string;
+  status: string;
+  rider_id: string;
+  driver_id: string | null;
+  fare_final_cents: number | null;
+  requested_at: string;
+}
+interface ListResponse { items: Ride[]; next_cursor: string | null; has_more: boolean }
+
+export function RidesPage(): JSX.Element {
+  const [statusFilter, setStatusFilter] = useState('');
+  const { data, isLoading } = useQuery({
+    queryKey: ['rides', statusFilter],
+    queryFn: () => api<ListResponse>(`/v1/admin/rides?status=${statusFilter}&limit=50`),
+  });
+
+  const refund = useMutation({
+    mutationFn: ({ id, cents }: { id: string; cents: number }) =>
+      api(`/v1/admin/rides/${id}/refund`, {
+        method: 'POST',
+        body: { amount_cents: cents, reason: 'Admin refund' },
+        idempotencyKey: `refund-${id}-${Date.now()}`,
+      }),
+  });
+
+  const columns: Column<Ride>[] = [
+    { key: 'id', header: 'Ride', render: (r) => <span className="font-mono text-xs">{r.id.slice(0, 8)}</span> },
+    { key: 'status', header: 'Status', render: (r) => r.status },
+    { key: 'fare', header: 'Fare', render: (r) => (r.fare_final_cents ? `$${(r.fare_final_cents / 100).toFixed(2)}` : '—') },
+    { key: 'when', header: 'Requested', render: (r) => new Date(r.requested_at).toLocaleString() },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (r) =>
+        r.fare_final_cents ? (
+          <button
+            onClick={() => {
+              if (confirm(`Refund $${(r.fare_final_cents! / 100).toFixed(2)}?`)) {
+                refund.mutate({ id: r.id, cents: r.fare_final_cents! });
+              }
+            }}
+            className="px-2 py-1 text-xs bg-danger text-white rounded"
+          >
+            Refund
+          </button>
+        ) : null,
+    },
+  ];
+
+  return (
+    <>
+      <PageHeader title="Rides" subtitle="Search, audit, refund." />
+      <select
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+        className="mb-4 px-3 py-2 border border-border rounded"
+      >
+        <option value="">All statuses</option>
+        <option value="requested">Requested</option>
+        <option value="accepted">Accepted</option>
+        <option value="arrived">Arrived</option>
+        <option value="in_progress">In progress</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled_by_rider">Cancelled by rider</option>
+        <option value="cancelled_by_driver">Cancelled by driver</option>
+        <option value="no_drivers_available">No drivers available</option>
+      </select>
+      <Table rows={data?.items ?? []} columns={columns} rowKey={(r) => r.id} emptyMessage={isLoading ? 'Loading…' : 'No rides.'} />
+    </>
+  );
+}

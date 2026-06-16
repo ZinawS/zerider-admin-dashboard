@@ -1,0 +1,46 @@
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../api/client';
+import { PageHeader } from '../../components/PageHeader';
+import { Table, type Column } from '../../components/Table';
+
+interface User {
+  id: string;
+  phone_number: string;
+  role: string;
+  status: string;
+  email: string | null;
+  created_at: string;
+}
+interface ListResponse { items: User[]; next_cursor: string | null; has_more: boolean }
+
+export function UsersPage(): JSX.Element {
+  const [q, setQ] = useState('');
+  const { data, isLoading } = useQuery({
+    queryKey: ['users', q],
+    queryFn: () => api<ListResponse>(`/v1/admin/users?q=${encodeURIComponent(q)}&limit=50`),
+  });
+
+  const columns: Column<User>[] = [
+    { key: 'phone', header: 'Phone', render: (u) => u.phone_number },
+    { key: 'role', header: 'Role', render: (u) => u.role },
+    { key: 'status', header: 'Status', render: (u) => (
+        <span className={u.status === 'active' ? 'text-success' : 'text-danger'}>{u.status}</span>
+    ) },
+    { key: 'email', header: 'Email', render: (u) => u.email ?? '—' },
+    { key: 'created', header: 'Joined', render: (u) => new Date(u.created_at).toLocaleDateString() },
+  ];
+
+  return (
+    <>
+      <PageHeader title="Users" subtitle="Riders and drivers." />
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search by phone or email…"
+        className="mb-4 w-full max-w-sm px-3 py-2 border border-border rounded"
+      />
+      <Table rows={data?.items ?? []} columns={columns} rowKey={(u) => u.id} emptyMessage={isLoading ? 'Loading…' : 'No users found.'} />
+    </>
+  );
+}
