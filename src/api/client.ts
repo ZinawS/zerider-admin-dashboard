@@ -1,6 +1,8 @@
 import { useAuthStore } from '../stores/auth.store.js';
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+// When VITE_API_URL is not set, use empty string so requests go through Vite's dev proxy
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public status: number) { super(message); }
@@ -29,8 +31,10 @@ export async function api<T>(path: string, opts: FetchOptions = {}): Promise<T> 
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
 
-  if (res.status === 401) {
-    // Attempt silent refresh before logging out
+  if (res.status === 401 && accessToken) {
+    // We had an active session — attempt silent refresh before logging out.
+    // If there was no session (e.g. login attempt with wrong credentials) we
+    // fall through to the normal error handler so the server's message is shown.
     const { refreshToken, setSession, user, admin_role, region } = useAuthStore.getState();
     if (refreshToken) {
       try {

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type AdminRole = 'super_admin' | 'regional_admin' | 'ops_manager' | 'support_agent';
+export type AdminRole = 'super_admin' | 'moderator' | 'analyst' | 'regional_admin' | 'ops_manager' | 'support_agent';
 
 interface AuthState {
   accessToken: string | null;

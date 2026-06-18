@@ -137,7 +137,7 @@ function ListingsTab(): JSX.Element {
       if (status) params.set('status', status);
       if (type)   params.set('type', type);
       if (debounced) params.set('q', debounced);
-      return api<ListingsResponse>(`/v1/admin/marketplace/listings?${params.toString()}`);
+      return api<ListingsResponse>(`/v1/admin/listings?${params.toString()}`);
     },
   });
 
@@ -282,7 +282,7 @@ function ReportsTab(): JSX.Element {
     queryKey: ['admin-marketplace-reports', page],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      return api<ReportsResponse>(`/v1/admin/marketplace/reports?${params.toString()}`);
+      return api<ReportsResponse>(`/v1/admin/reports?${params.toString()}`);
     },
   });
 

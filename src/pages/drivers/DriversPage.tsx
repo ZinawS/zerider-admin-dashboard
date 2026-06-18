@@ -91,13 +91,6 @@ function docFileUrl(doc: { id: string; storage_url?: string | null; file_url?: s
   return download ? `${base}?download=true` : base;
 }
 
-// Keep the old normalizer as fallback for static-path URLs
-function normalizeDocUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  const match = url.match(/(\/uploads\/.+)$/);
-  if (match) return match[1];
-  return url;
-}
 
 interface DriverFormData {
   first_name: string;
@@ -222,6 +215,15 @@ export function DriversPage(): JSX.Element {
     enabled: !!selectedDriverId,
   });
 
+  const { data: driverDeliveriesData } = useQuery({
+    queryKey: ['driverDeliveries', selectedDriverId],
+    queryFn: () =>
+      api<{ items: any[]; total: number; has_more: boolean }>(
+        `/v1/deliveries/admin/all?q=${selectedDriverId}&limit=500`,
+      ),
+    enabled: !!selectedDriverId,
+  });
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['drivers'] });
     if (selectedDriverId) qc.invalidateQueries({ queryKey: ['driverDetails', selectedDriverId] });
@@ -269,7 +271,6 @@ export function DriversPage(): JSX.Element {
   const handleEditClick = () => {
     if (!driverDetails?.driver) return;
     const d = driverDetails?.driver;
-    // console.log('Driver details for form:', d); // Debug log
     setFormData({
       first_name: d.first_name,
       last_name: d.last_name,
@@ -670,12 +671,32 @@ export function DriversPage(): JSX.Element {
                     )}
                   </section>
 
+                  {(() => {
+                    const deliveries = driverDeliveriesData?.items ?? [];
+                    const asDriver = deliveries.filter((d: any) => d.driver_id === selectedDriverId);
+                    const completed = asDriver.filter((d: any) => d.status === 'delivered');
+                    const cancelled = asDriver.filter((d: any) => d.status === 'cancelled' || d.status === 'failed');
+                    const revenue = completed.reduce((sum: number, d: any) => sum + Number(d.total_cents ?? d.fare_cents ?? 0), 0);
+                    if (asDriver.length === 0) return null;
+                    return (
+                      <section>
+                        <h3 className="font-semibold text-lg border-b pb-2 mb-4">Delivery Stats</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div><p className="text-muted text-xs mb-1">Deliveries Assigned</p><p className="font-medium text-sm">{asDriver.length}</p></div>
+                          <div><p className="text-muted text-xs mb-1">Deliveries Completed</p><p className="font-medium text-sm text-green-700">{completed.length}</p></div>
+                          <div><p className="text-muted text-xs mb-1">Deliveries Cancelled</p><p className="font-medium text-sm text-red-600">{cancelled.length}</p></div>
+                          <div><p className="text-muted text-xs mb-1">Delivery Revenue</p><p className="font-medium text-sm">${(revenue / 100).toFixed(2)}</p></div>
+                          <div><p className="text-muted text-xs mb-1">Completion Rate</p><p className="font-medium text-sm">{asDriver.length > 0 ? `${((completed.length / asDriver.length) * 100).toFixed(0)}%` : '—'}</p></div>
+                        </div>
+                      </section>
+                    );
+                  })()}
+
                   <section>
                     <h3 className="font-semibold text-lg border-b pb-2 mb-4">Documents</h3>
                     {(driverDetails?.driver?.documents?.length ?? 0) > 0 ? (
                       <div className="grid grid-cols-1 gap-3">
                         {driverDetails.driver.documents?.map((doc: Document) => {
-                          const fallbackUrl = normalizeDocUrl(doc.file_url || doc.storage_url);
                           const hasFile = !!(doc.storage_url || doc.file_url);
                           const storageUrl = doc.storage_url || doc.file_url || '';
                           const isImage = hasFile && /\.(jpe?g|png|webp|gif|bmp)$/i.test(storageUrl);

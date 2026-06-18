@@ -22,7 +22,7 @@ function ChartCard({ title, children, height = 240 }: { title: string; children:
   );
 }
 
-type Tab = 'revenue' | 'drivers' | 'riders' | 'refunds' | 'operations';
+type Tab = 'revenue' | 'deliveries' | 'drivers' | 'riders' | 'refunds' | 'operations';
 type RangePreset = 'today' | '7d' | '30d' | 'mtd' | 'lastmonth' | 'custom';
 
 function fmtUsd(c: number | string | null | undefined) {
@@ -184,7 +184,7 @@ export function ReportsPage(): JSX.Element {
       </div>
 
       <div className="flex gap-1 border-b border-border mb-4">
-        {(['revenue', 'drivers', 'riders', 'refunds', 'operations'] as Tab[]).map((t) => (
+        {(['revenue', 'deliveries', 'drivers', 'riders', 'refunds', 'operations'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={'px-4 py-2 capitalize text-sm font-medium border-b-2 transition ' +
               (tab === t ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-ink')}>
@@ -194,11 +194,197 @@ export function ReportsPage(): JSX.Element {
       </div>
 
       {tab === 'revenue' && <RevenueReport params={params.toString()} range={range} />}
+      {tab === 'deliveries' && <DeliveriesReport range={range} />}
       {tab === 'drivers' && <DriversReport params={params.toString()} range={range} />}
       {tab === 'riders' && <RidersReport params={params.toString()} range={range} />}
       {tab === 'refunds' && <RefundsReport params={params.toString()} range={range} />}
       {tab === 'operations' && <OpsReport params={params.toString()} range={range} />}
     </>
+  );
+}
+
+// ============ DELIVERIES ============
+const DELIVERY_STATUS_COLOR: Record<string, string> = {
+  pending:    'bg-yellow-100 text-yellow-800',
+  assigned:   'bg-blue-100 text-blue-800',
+  picked_up:  'bg-orange-100 text-orange-800',
+  in_transit: 'bg-purple-100 text-purple-800',
+  delivered:  'bg-green-100 text-green-800',
+  failed:     'bg-red-100 text-red-800',
+  cancelled:  'bg-gray-100 text-gray-600',
+};
+
+const SERVICE_TYPE_LABEL: Record<string, string> = {
+  food: 'Food', grocery: 'Grocery', package: 'Package',
+  courier: 'Courier', pharmacy: 'Pharmacy', retail: 'Retail',
+};
+
+interface DeliveryItem {
+  id: string;
+  status: string;
+  service_type: string;
+  total_cents: number | null;
+  fare_cents: number | null;
+  base_fare_cents: number | null;
+  distance_fare_cents: number | null;
+  created_at: string;
+  delivered_at: string | null;
+  requester_id: string;
+  driver_id: string | null;
+  pickup_address: string | null;
+  dropoff_address: string | null;
+}
+
+function DeliveriesReport({ range }: { range: { start: string; end: string } }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['report-deliveries', range.start, range.end],
+    queryFn: () => api<{ items: DeliveryItem[]; total: number; has_more: boolean }>(
+      `/v1/deliveries/admin/all?limit=500`,
+    ),
+  });
+
+  const allItems = data?.items ?? [];
+
+  const rows = useMemo(() => {
+    const start = new Date(range.start).getTime();
+    const end = new Date(range.end).getTime();
+    return allItems.filter((d) => {
+      const t = new Date(d.created_at).getTime();
+      return t >= start && t <= end;
+    });
+  }, [allItems, range.start, range.end]);
+
+  const subtitle = `${range.start.slice(0, 10)} to ${range.end.slice(0, 10)}`;
+
+  const totals = useMemo(() => {
+    const delivered = rows.filter((r) => r.status === 'delivered');
+    const active = rows.filter((r) => ['assigned', 'picked_up', 'in_transit'].includes(r.status));
+    const cancelled = rows.filter((r) => r.status === 'cancelled' || r.status === 'failed');
+    const revenue = delivered.reduce((sum, r) => sum + Number(r.total_cents ?? r.fare_cents ?? r.base_fare_cents ?? 0), 0);
+    return { total: rows.length, delivered: delivered.length, active: active.length, cancelled: cancelled.length, revenue };
+  }, [rows]);
+
+  const byServiceType = useMemo(() => {
+    const map: Record<string, { count: number; revenue: number }> = {};
+    rows.forEach((r) => {
+      const key = r.service_type || 'unknown';
+      if (!map[key]) map[key] = { count: 0, revenue: 0 };
+      map[key].count += 1;
+      if (r.status === 'delivered') {
+        map[key].revenue += Number(r.total_cents ?? r.fare_cents ?? r.base_fare_cents ?? 0);
+      }
+    });
+    return Object.entries(map).map(([type, v]) => ({ type, ...v })).sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const byStatus = useMemo(() => {
+    const map: Record<string, number> = {};
+    rows.forEach((r) => { map[r.status] = (map[r.status] || 0) + 1; });
+    return Object.entries(map).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const exportColumns = [
+    { header: 'ID', getValue: (r: DeliveryItem) => r.id },
+    { header: 'Status', getValue: (r: DeliveryItem) => r.status },
+    { header: 'Service Type', getValue: (r: DeliveryItem) => r.service_type },
+    { header: 'Revenue', getValue: (r: DeliveryItem) => fmtUsd(r.total_cents ?? r.fare_cents) },
+    { header: 'Created', getValue: (r: DeliveryItem) => new Date(r.created_at).toLocaleString() },
+    { header: 'Delivered', getValue: (r: DeliveryItem) => r.delivered_at ? new Date(r.delivered_at).toLocaleString() : '' },
+    { header: 'Pickup', getValue: (r: DeliveryItem) => r.pickup_address ?? '' },
+    { header: 'Dropoff', getValue: (r: DeliveryItem) => r.dropoff_address ?? '' },
+  ];
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <Kpi label="Total deliveries" value={totals.total} />
+        <Kpi label="Delivered" value={totals.delivered} accent="success" />
+        <Kpi label="Active" value={totals.active} accent="accent" />
+        <Kpi label="Cancelled / failed" value={totals.cancelled} accent="danger" />
+        <Kpi label="Delivery revenue" value={fmtUsd(totals.revenue)} accent="success" />
+        <Kpi label="Completion rate" value={totals.total ? `${((totals.delivered / totals.total) * 100).toFixed(1)}%` : '—'} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {byServiceType.length > 0 && (
+          <ChartCard title="Deliveries by service type">
+            <BarChart data={byServiceType.map((s) => ({ name: SERVICE_TYPE_LABEL[s.type] ?? s.type, count: s.count, revenue: s.revenue / 100 }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: any, name: string) => name === 'revenue' ? `$${Number(v).toFixed(2)}` : v} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="count" name="Deliveries" fill={CHART_COLORS[0]} />
+              <Bar dataKey="revenue" name="Revenue ($)" fill={CHART_COLORS[1]} />
+            </BarChart>
+          </ChartCard>
+        )}
+        {byStatus.length > 0 && (
+          <ChartCard title="Status breakdown" height={240}>
+            <PieChart>
+              <Pie
+                data={byStatus.map((s) => ({ name: s.status.replace(/_/g, ' '), value: s.count }))}
+                dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                label={(e: any) => `${e.name}: ${e.value}`}
+              >
+                {byStatus.map((_: any, i: number) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ChartCard>
+        )}
+      </div>
+
+      <div className="flex justify-end mb-2">
+        <ExportMenu rows={rows} filename={`deliveries-${range.start.slice(0,10)}-${range.end.slice(0,10)}`} columns={exportColumns} title="Delivery Report" subtitle={subtitle} />
+      </div>
+
+      <div className="bg-white border border-border rounded overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-surface text-muted text-xs uppercase">
+            <tr>
+              <th className="text-left px-3 py-2">ID</th>
+              <th className="text-left px-3 py-2">Type</th>
+              <th className="text-left px-3 py-2">Status</th>
+              <th className="text-left px-3 py-2">Pickup → Dropoff</th>
+              <th className="text-right px-3 py-2">Revenue</th>
+              <th className="text-left px-3 py-2">Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted">Loading…</td></tr>}
+            {!isLoading && !rows.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted">No deliveries in this period.</td></tr>}
+            {rows.slice(0, 100).map((r) => (
+              <tr key={r.id} className="border-t border-border">
+                <td className="px-3 py-2 font-mono text-xs text-muted">{r.id.slice(0, 8)}</td>
+                <td className="px-3 py-2 text-xs capitalize">{SERVICE_TYPE_LABEL[r.service_type] ?? r.service_type}</td>
+                <td className="px-3 py-2 text-xs">
+                  <span className={`px-2 py-0.5 rounded-full ${DELIVERY_STATUS_COLOR[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                    {r.status.replace(/_/g, ' ')}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs text-ink truncate max-w-[200px]">
+                  {(r.pickup_address ?? '—').split(',')[0]} → {(r.dropoff_address ?? '—').split(',')[0]}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-success font-medium">
+                  {r.status === 'delivered' ? fmtUsd(r.total_cents ?? r.fare_cents) : '—'}
+                </td>
+                <td className="px-3 py-2 text-xs text-muted whitespace-nowrap">
+                  {new Date(r.created_at).toLocaleString()}
+                </td>
+              </tr>
+            ))}
+            {rows.length > 100 && (
+              <tr className="border-t border-border">
+                <td colSpan={6} className="px-3 py-2 text-center text-xs text-muted">
+                  Showing first 100 of {rows.length} deliveries. Export for full data.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

@@ -61,6 +61,15 @@ export function UserDetailPage(): JSX.Element {
     enabled: !!id,
   });
 
+  const { data: deliveriesData } = useQuery({
+    queryKey: ['admin-user-deliveries', id],
+    queryFn: () =>
+      api<{ items: any[]; total: number; has_more: boolean }>(
+        `/v1/deliveries/admin/all?q=${id}&limit=500`,
+      ),
+    enabled: !!id,
+  });
+
   const suspendMutation = useMutation({
     mutationFn: () =>
       api(`/v1/admin/users/${id}/suspend`, { method: 'POST', body: { reason: 'admin action' } }),
@@ -95,6 +104,23 @@ export function UserDetailPage(): JSX.Element {
       driverCancelled: asDriver.filter((t) => t.status.startsWith('cancelled')).length,
     };
   }, [tripsData]);
+
+  const deliveryStats = useMemo(() => {
+    const items = deliveriesData?.items ?? [];
+    const asRequester = items.filter((d) => d.requester_id === id);
+    const asDriver = items.filter((d) => d.driver_id === id);
+    const requesterCompleted = asRequester.filter((d) => d.status === 'delivered');
+    const driverCompleted = asDriver.filter((d) => d.status === 'delivered');
+    return {
+      requesterTotal: asRequester.length,
+      requesterCompleted: requesterCompleted.length,
+      requesterCancelled: asRequester.filter((d) => d.status === 'cancelled' || d.status === 'failed').length,
+      requesterSpentCents: requesterCompleted.reduce((sum: number, d: any) => sum + Number(d.total_cents ?? d.fare_cents ?? 0), 0),
+      driverTotal: asDriver.length,
+      driverCompleted: driverCompleted.length,
+      driverRevenueCents: driverCompleted.reduce((sum: number, d: any) => sum + Number(d.total_cents ?? d.fare_cents ?? 0), 0),
+    };
+  }, [deliveriesData, id]);
 
   if (isLoading) return <div className="text-muted">Loading…</div>;
   if (!detail) return <div className="text-danger">User not found.</div>;
@@ -205,7 +231,7 @@ export function UserDetailPage(): JSX.Element {
           </button>
         ))}
       </div>
-      {tab === 'overview' && <OverviewTab detail={detail} stats={stats} />}
+      {tab === 'overview' && <OverviewTab detail={detail} stats={stats} deliveryStats={deliveryStats} />}
       {tab === 'trips' && <TripsTab userId={id} />}
       {tab === 'payments' && <PaymentsTab userId={id} />}
       {tab === 'vehicles' && detail.driver && <VehiclesTab vehicles={detail.vehicles} />}
@@ -237,14 +263,14 @@ function StatCard({ label, value, sub }: { label: string; value: any; sub?: stri
   );
 }
 
-function OverviewTab({ detail, stats }: { detail: UserDetail; stats: any }) {
+function OverviewTab({ detail, stats, deliveryStats }: { detail: UserDetail; stats: any; deliveryStats: any }) {
   const d = detail.driver;
   const r = detail.rider;
   return (
     <div className="space-y-6">
       {d && (
         <div>
-          <div className="text-xs uppercase text-muted mb-2">Driver</div>
+          <div className="text-xs uppercase text-muted mb-2">Driver — Ride Sharing</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatCard label="Trips Completed" value={d.total_trips ?? stats.driverCompleted} />
             <StatCard label="Trips Cancelled" value={stats.driverCancelled} />
@@ -258,11 +284,25 @@ function OverviewTab({ detail, stats }: { detail: UserDetail; stats: any }) {
             <StatCard label="Wallet" value={fmtUsd(d.wallet_balance_cents)} />
             <StatCard label="Joined" value={new Date(d.created_at).toLocaleDateString()} />
           </div>
+          {(deliveryStats.driverTotal > 0) && (
+            <div className="mt-4">
+              <div className="text-xs uppercase text-muted mb-2">Driver — Deliveries</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard label="Deliveries Assigned" value={deliveryStats.driverTotal} />
+                <StatCard label="Deliveries Completed" value={deliveryStats.driverCompleted} />
+                <StatCard label="Delivery Revenue" value={fmtUsd(deliveryStats.driverRevenueCents)} />
+                <StatCard
+                  label="Delivery Completion"
+                  value={deliveryStats.driverTotal ? `${((deliveryStats.driverCompleted / deliveryStats.driverTotal) * 100).toFixed(0)}%` : '—'}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
       {r && (
         <div>
-          <div className="text-xs uppercase text-muted mb-2">Rider</div>
+          <div className="text-xs uppercase text-muted mb-2">Rider — Ride Sharing</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatCard label="Trips Completed" value={stats.riderCompleted} />
             <StatCard label="Trips Cancelled" value={stats.riderCancelled} />
@@ -271,6 +311,17 @@ function OverviewTab({ detail, stats }: { detail: UserDetail; stats: any }) {
             <StatCard label="Wallet" value={fmtUsd(r.wallet_balance_cents)} />
             <StatCard label="Joined" value={new Date(r.created_at).toLocaleDateString()} />
           </div>
+          {(deliveryStats.requesterTotal > 0) && (
+            <div className="mt-4">
+              <div className="text-xs uppercase text-muted mb-2">Rider — Deliveries</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard label="Deliveries Requested" value={deliveryStats.requesterTotal} />
+                <StatCard label="Deliveries Completed" value={deliveryStats.requesterCompleted} />
+                <StatCard label="Deliveries Cancelled" value={deliveryStats.requesterCancelled} />
+                <StatCard label="Delivery Spend" value={fmtUsd(deliveryStats.requesterSpentCents)} />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -434,7 +485,6 @@ function DocumentsTab({ documents, userId }: { documents: any[]; userId: string 
       <div className="space-y-2">
         {documents.map((d) => {
           const storageUrl = d.storage_url || d.file_url || '';
-          const _isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(storageUrl);
           const isPdf = /\.pdf$/i.test(storageUrl);
           return (
             <div

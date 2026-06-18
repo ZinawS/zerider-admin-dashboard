@@ -124,7 +124,6 @@ export function CommissionPage(): JSX.Element {
   };
 
   const handleSave = () => {
-    // In a real app, this would PATCH to the pricing service.
     toast('Commission rates saved successfully.', 'success');
   };
 

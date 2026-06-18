@@ -19,6 +19,16 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      // Proxy all /v1/admin/* API calls through Vite to avoid CORS issues
+      '/v1/admin': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      // Auth endpoints (login, token refresh, logout, /me) — must come after /v1/admin
+      '/auth': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
 });
