@@ -35,13 +35,13 @@ const NAV_BASE = [
   { to: '/content', label: 'App content' },
   { to: '/gamification', label: 'Gamification' },
   { to: '/delivery', label: 'Delivery' },
+  { to: '/wallet', label: 'Earnings Hub' },
   { to: '/marketplace', label: 'Marketplace' },
   { to: '/settings', label: 'Settings' },
 ];
 
 const REVENUE_NAV = [
   { to: '/revenue/subscriptions', label: 'Subscriptions' },
-  { to: '/revenue/featured', label: 'Featured Listings' },
   { to: '/revenue/commission', label: 'Commission' },
 ];
 

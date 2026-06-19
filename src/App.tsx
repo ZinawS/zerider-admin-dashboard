@@ -19,9 +19,9 @@ import { ContentPage } from './pages/content/ContentPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { GamificationPage } from './pages/gamification/GamificationPage';
 import { DeliveryPage } from './pages/delivery/DeliveryPage';
+import { WalletPage } from './pages/wallet/WalletPage';
 import { MarketplacePage } from './pages/marketplace/MarketplacePage';
 import { SubscriptionsPage } from './pages/revenue/SubscriptionsPage';
-import { FeaturedListingsPage } from './pages/revenue/FeaturedListingsPage';
 import { CommissionPage } from './pages/revenue/CommissionPage';
 import { useAuthStore } from './stores/auth.store';
 
@@ -47,9 +47,9 @@ export function App(): JSX.Element {
         <Route path="/content" element={<ContentPage />} />
         <Route path="/gamification" element={<GamificationPage />} />
         <Route path="/delivery" element={<DeliveryPage />} />
+        <Route path="/wallet" element={<WalletPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
-        <Route path="/revenue/featured" element={<FeaturedListingsPage />} />
         <Route path="/revenue/commission" element={<CommissionPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

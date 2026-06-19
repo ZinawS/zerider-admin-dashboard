@@ -9,13 +9,21 @@ import { useDebounced } from '../../hooks/useDebounced.js';
 // Types
 // ---------------------------------------------------------------------------
 
+interface ListingImage {
+  id: string;
+  url: string;
+  is_primary: boolean;
+  sort_order: number;
+}
+
 interface Listing {
   id: string;
   title: string;
   description: string | null;
   category_name: string | null;
+  category_slug: string | null;
   listing_type: 'standard' | 'featured' | 'sponsored' | 'premium';
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'expired' | 'sold';
+  status: 'draft' | 'pending' | 'information_required' | 'approved' | 'rejected' | 'expired' | 'sold' | 'suspended';
   user_id: string;
   price_cents: number | null;
   currency: string;
@@ -28,6 +36,8 @@ interface Listing {
   rejection_reason: string | null;
   approved_at: string | null;
   expires_at: string | null;
+  video_url: string | null;
+  images: ListingImage[] | null;
   view_count: number;
   contact_count: number;
   created_at: string;
@@ -75,7 +85,26 @@ interface ReportsResponse  { items?: Report[]; data?: Report[]; total: number; }
 // Helpers
 // ---------------------------------------------------------------------------
 
-const LISTING_STATUSES = ['', 'pending', 'approved', 'rejected', 'expired', 'draft', 'sold'] as const;
+const LISTING_STATUSES = ['', 'pending', 'information_required', 'approved', 'rejected', 'expired', 'draft', 'sold', 'suspended'] as const;
+
+// Category placeholder emojis for media display
+const CATEGORY_PLACEHOLDERS: Record<string, string> = {
+  'vehicles-sale':  '🚗',
+  'vehicle-rentals':'🔑',
+  'real-estate':    '🏠',
+  'jobs':           '💼',
+  'services':       '🔧',
+  'events':         '🎉',
+  'promotions':     '🏷️',
+  'businesses':     '🏪',
+  'community':      '👥',
+};
+
+function daysUntil(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const diff = new Date(dateStr).getTime() - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
 const LISTING_TYPES    = ['', 'standard', 'featured', 'sponsored', 'premium'] as const;
 const PAGE_SIZE = 25;
 
@@ -85,13 +114,20 @@ function fmtUsd(cents: number | string | null | undefined) {
 
 function listingStatusColor(s: string): string {
   switch (s) {
-    case 'pending':  return 'bg-yellow-100 text-yellow-800';
-    case 'approved': return 'bg-green-100 text-green-800';
-    case 'rejected': return 'bg-red-100 text-red-800';
-    case 'expired':  return 'bg-gray-100 text-gray-500';
-    case 'sold':     return 'bg-blue-100 text-blue-800';
-    default:         return 'bg-gray-100 text-gray-600';
+    case 'pending':              return 'bg-yellow-100 text-yellow-800';
+    case 'information_required': return 'bg-orange-100 text-orange-800';
+    case 'approved':             return 'bg-green-100 text-green-800';
+    case 'rejected':             return 'bg-red-100 text-red-800';
+    case 'expired':              return 'bg-gray-100 text-gray-500';
+    case 'sold':                 return 'bg-blue-100 text-blue-800';
+    case 'suspended':            return 'bg-red-100 text-red-700';
+    default:                     return 'bg-gray-100 text-gray-600';
   }
+}
+
+function statusLabel(s: string): string {
+  if (s === 'information_required') return 'Info Required';
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function listingTypeColor(t: string): string {
@@ -202,6 +238,48 @@ function MessageModal({ listing, onClose }: { listing: Listing; onClose: () => v
   );
 }
 
+function RequestInfoModal({ listing, onClose }: { listing: Listing; onClose: () => void }) {
+  const [message, setMessage] = useState('');
+  const [notes, setNotes]     = useState(listing.admin_notes ?? '');
+  const qc = useQueryClient();
+  const req = useMutation({
+    mutationFn: () =>
+      api<void>(`/v1/admin/marketplace/listings/${listing.id}/request-info`, {
+        method: 'POST', body: { message, admin_notes: notes || undefined },
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }); onClose(); },
+    onError: (e: any) => alert('Request failed: ' + (e?.message ?? 'unknown')),
+  });
+  return (
+    <Modal title={`Request more info — "${listing.title.slice(0, 40)}"`} onClose={onClose}>
+      <p className="text-xs text-muted mb-3">
+        The listing status will change to <span className="font-medium text-orange-700">Information Required</span>.
+        The owner will be notified via push/email.
+      </p>
+      <textarea
+        value={message} onChange={(e) => setMessage(e.target.value)} rows={4}
+        placeholder="What information is needed? (sent to the owner)"
+        className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm resize-none mb-3 mt-1"
+      />
+      <label className="block text-xs text-muted mb-1">Internal notes (not sent)</label>
+      <textarea
+        value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+        placeholder="Internal admin notes…"
+        className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm resize-none mb-4"
+      />
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-3 py-1.5 text-sm border border-border rounded">Cancel</button>
+        <button
+          onClick={() => req.mutate()} disabled={!message.trim() || req.isPending}
+          className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded disabled:opacity-50"
+        >
+          {req.isPending ? 'Sending…' : 'Request information'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function EditModal({ listing, onClose }: { listing: Listing; onClose: () => void }) {
   const [title, setTitle]      = useState(listing.title);
   const [description, setDesc] = useState(listing.description ?? '');
@@ -235,7 +313,7 @@ function EditModal({ listing, onClose }: { listing: Listing; onClose: () => void
           <select value={status} onChange={(e) => setStatus(e.target.value as Listing['status'])}
             className="w-full px-3 py-1.5 bg-white text-ink border border-border rounded text-sm">
             {LISTING_STATUSES.filter(Boolean).map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{statusLabel(s)}</option>
             ))}
           </select>
         </div>
@@ -287,7 +365,63 @@ function DeleteModal({ listing, onClose }: { listing: Listing; onClose: () => vo
 // Listing detail side panel
 // ---------------------------------------------------------------------------
 
+function ListingMedia({ listing }: { listing: Listing }) {
+  const [imgIdx, setImgIdx] = useState(0);
+  const imgs = listing.images ?? [];
+  const firstImg = imgs.length > 0 ? imgs.sort((a, b) => a.sort_order - b.sort_order)[0] : null;
+  const placeholder = CATEGORY_PLACEHOLDERS[listing.category_slug ?? ''] ?? '🏷️';
+
+  if (firstImg) {
+    return (
+      <div className="relative w-full h-44 bg-surface rounded overflow-hidden">
+        <img
+          src={imgs[imgIdx]?.url ?? firstImg.url}
+          alt="listing"
+          className="w-full h-full object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        {imgs.length > 1 && (
+          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+            {imgs.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setImgIdx(i)}
+                className={`w-2 h-2 rounded-full ${i === imgIdx ? 'bg-white' : 'bg-white/50'}`}
+              />
+            ))}
+          </div>
+        )}
+        <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">
+          {imgs.length} photo{imgs.length !== 1 ? 's' : ''}
+        </div>
+      </div>
+    );
+  }
+
+  if (listing.video_url) {
+    return (
+      <div className="w-full rounded overflow-hidden bg-black">
+        <video
+          src={listing.video_url}
+          controls
+          className="w-full max-h-44 object-contain"
+          preload="metadata"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-28 bg-surface rounded flex flex-col items-center justify-center text-muted gap-1">
+      <span className="text-4xl">{placeholder}</span>
+      <span className="text-xs">{listing.category_name ?? 'No media'}</span>
+    </div>
+  );
+}
+
 function DetailPanel({ listing, onClose }: { listing: Listing; onClose: () => void }) {
+  const expiryDays = daysUntil(listing.expires_at);
+
   return (
     <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-white border-l border-border shadow-xl z-40 flex flex-col overflow-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -295,13 +429,32 @@ function DetailPanel({ listing, onClose }: { listing: Listing; onClose: () => vo
         <button onClick={onClose} className="text-muted hover:text-ink text-xl leading-none px-1">&times;</button>
       </div>
       <div className="p-4 space-y-4 text-sm flex-1">
+
+        {/* Media */}
+        <ListingMedia listing={listing} />
+        {listing.video_url && (listing.images?.length ?? 0) > 0 && (
+          <div className="w-full rounded overflow-hidden bg-black">
+            <video src={listing.video_url} controls className="w-full max-h-32 object-contain" preload="metadata" />
+          </div>
+        )}
+
         <div className="flex gap-2 flex-wrap">
-          <span className={`px-2 py-0.5 rounded-full text-xs ${listingStatusColor(listing.status)}`}>{listing.status}</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${listingStatusColor(listing.status)}`}>
+            {statusLabel(listing.status)}
+          </span>
           <span className={`px-2 py-0.5 rounded-full text-xs capitalize ${listingTypeColor(listing.listing_type)}`}>{listing.listing_type}</span>
           {listing.listing_fee_paid && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-800">
               Fee paid {fmtUsd(listing.listing_fee_cents)}
             </span>
+          )}
+          {expiryDays !== null && expiryDays >= 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-xs ${expiryDays <= 3 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
+              {expiryDays === 0 ? 'Expires today' : `${expiryDays}d left`}
+            </span>
+          )}
+          {expiryDays !== null && expiryDays < 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">Expired</span>
           )}
         </div>
 
@@ -319,7 +472,15 @@ function DetailPanel({ listing, onClose }: { listing: Listing; onClose: () => vo
           <div><span className="text-muted">Contacts</span><br />{listing.contact_count}</div>
           <div><span className="text-muted">Created</span><br />{new Date(listing.created_at).toLocaleString()}</div>
           {listing.approved_at && <div><span className="text-muted">Approved</span><br />{new Date(listing.approved_at).toLocaleString()}</div>}
-          {listing.expires_at && <div><span className="text-muted">Expires</span><br />{new Date(listing.expires_at).toLocaleString()}</div>}
+          {listing.expires_at && (
+            <div>
+              <span className="text-muted">Expires</span><br />
+              {new Date(listing.expires_at).toLocaleDateString()}
+              {expiryDays !== null && expiryDays <= 7 && expiryDays >= 0 && (
+                <span className="ml-1 text-orange-600 font-medium">({expiryDays}d)</span>
+              )}
+            </div>
+          )}
         </div>
 
         {(listing.contact_phone || listing.contact_email) && (
@@ -477,6 +638,7 @@ function ListingsTab() {
   const [page,        setPage]        = useState(1);
   const [selected,    setSelected]    = useState<Listing | null>(null);
   const [rejectId,    setRejectId]    = useState<string | null>(null);
+  const [infoListing, setInfoListing] = useState<Listing | null>(null);
   const [msgListing,  setMsgListing]  = useState<Listing | null>(null);
   const [editListing, setEditListing] = useState<Listing | null>(null);
   const [delListing,  setDelListing]  = useState<Listing | null>(null);
@@ -515,7 +677,9 @@ function ListingsTab() {
         />
         <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}
           className="px-3 py-1.5 text-xs bg-white text-ink border border-border rounded">
-          {LISTING_STATUSES.map((s) => <option key={s || 'all'} value={s}>{s || 'all statuses'}</option>)}
+          {LISTING_STATUSES.map((s) => (
+            <option key={s || 'all'} value={s}>{s ? statusLabel(s) : 'All statuses'}</option>
+          ))}
         </select>
         <select value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}
           className="px-3 py-1.5 text-xs bg-white text-ink border border-border rounded">
@@ -565,7 +729,7 @@ function ListingsTab() {
                     </td>
                     <td className="px-3 py-2 text-xs" onClick={(e) => e.stopPropagation()}>
                       <span className={`px-2 py-0.5 rounded-full text-xs ${listingStatusColor(l.status)}`}>
-                        {l.status}
+                        {statusLabel(l.status)}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-xs" onClick={(e) => e.stopPropagation()}>
@@ -585,11 +749,17 @@ function ListingsTab() {
                     </td>
                     <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1 flex-wrap">
-                        {l.status === 'pending' && (
+                        {(l.status === 'pending' || l.status === 'information_required') && (
                           <button
                             onClick={() => approve.mutate(l.id)} disabled={approve.isPending}
                             className="px-2 py-1 text-[11px] bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
                           >Approve</button>
+                        )}
+                        {(l.status === 'pending' || l.status === 'information_required') && (
+                          <button
+                            onClick={() => setInfoListing(l)}
+                            className="px-2 py-1 text-[11px] bg-orange-500 text-white rounded hover:bg-orange-600"
+                          >Info?</button>
                         )}
                         {l.status !== 'rejected' && l.status !== 'expired' && (
                           <button
@@ -621,6 +791,7 @@ function ListingsTab() {
 
       {selected    && <DetailPanel listing={selected} onClose={() => setSelected(null)} />}
       {rejectId    && <RejectModal listingId={rejectId} onClose={() => setRejectId(null)} />}
+      {infoListing && <RequestInfoModal listing={infoListing} onClose={() => setInfoListing(null)} />}
       {msgListing  && <MessageModal listing={msgListing} onClose={() => setMsgListing(null)} />}
       {editListing && <EditModal listing={editListing} onClose={() => setEditListing(null)} />}
       {delListing  && <DeleteModal listing={delListing} onClose={() => setDelListing(null)} />}
