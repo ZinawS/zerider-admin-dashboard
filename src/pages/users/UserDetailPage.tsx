@@ -33,7 +33,7 @@ interface TripRow {
   created_at: string;
   role: 'rider' | 'driver';
 }
-type Tab = 'overview' | 'trips' | 'payments' | 'vehicles' | 'documents';
+type Tab = 'overview' | 'trips' | 'deliveries' | 'payments' | 'vehicles' | 'documents';
 
 function fmtUsd(cents: number | null | undefined) {
   return `$${(Number(cents ?? 0) / 100).toFixed(2)}`;
@@ -65,7 +65,7 @@ export function UserDetailPage(): JSX.Element {
     queryKey: ['admin-user-deliveries', id],
     queryFn: () =>
       api<{ items: any[]; total: number; has_more: boolean }>(
-        `/v1/deliveries/admin/all?q=${id}&limit=500`,
+        `/v1/admin/deliveries?limit=500&q=${id}`,
       ),
     enabled: !!id,
   });
@@ -132,8 +132,8 @@ export function UserDetailPage(): JSX.Element {
     detail.driver?.auth_status === 'suspended' ||
     detail.rider?.status === 'suspended';
   const tabs: Tab[] = detail.driver
-    ? ['overview', 'trips', 'payments', 'vehicles', 'documents']
-    : ['overview', 'trips', 'payments'];
+    ? ['overview', 'trips', 'deliveries', 'payments', 'vehicles', 'documents']
+    : ['overview', 'trips', 'deliveries', 'payments'];
 
   return (
     <div>
@@ -233,6 +233,7 @@ export function UserDetailPage(): JSX.Element {
       </div>
       {tab === 'overview' && <OverviewTab detail={detail} stats={stats} deliveryStats={deliveryStats} />}
       {tab === 'trips' && <TripsTab userId={id} />}
+      {tab === 'deliveries' && <DeliveriesTab userId={id} />}
       {tab === 'payments' && <PaymentsTab userId={id} />}
       {tab === 'vehicles' && detail.driver && <VehiclesTab vehicles={detail.vehicles} />}
       {tab === 'documents' && detail.driver && (
@@ -384,6 +385,74 @@ function TripsTab({ userId }: { userId: string }) {
                 {fmtUsd(t.fare_final_cents ?? t.fare_estimate_cents)}
               </td>
               <td className="px-3 py-2 text-right text-muted">{fmtUsd(t.tip_amount_cents)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DeliveriesTab({ userId }: { userId: string }) {
+  const navigate = useNavigate();
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-user-deliveries-tab', userId],
+    queryFn: () =>
+      api<{ items: any[]; total: number; has_more: boolean }>(
+        `/v1/admin/deliveries?limit=50&q=${userId}`,
+      ),
+  });
+  if (isLoading) return <div className="text-muted">Loading deliveries…</div>;
+  const items = data?.items ?? [];
+  if (!items.length) return <div className="text-muted">No deliveries yet.</div>;
+  return (
+    <div className="bg-white border border-border rounded overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-surface text-muted text-xs uppercase">
+          <tr>
+            <th className="text-left px-3 py-2">Date</th>
+            <th className="text-left px-3 py-2">Service</th>
+            <th className="text-left px-3 py-2">Pickup → Dropoff</th>
+            <th className="text-left px-3 py-2">Status</th>
+            <th className="text-right px-3 py-2">Fare</th>
+            <th className="text-left px-3 py-2">Payment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((d: any) => (
+            <tr
+              key={d.id}
+              onClick={() => navigate(`/delivery`)}
+              className="border-t border-border hover:bg-surface cursor-pointer"
+            >
+              <td className="px-3 py-2 text-muted text-xs whitespace-nowrap">
+                {new Date(d.created_at).toLocaleString()}
+              </td>
+              <td className="px-3 py-2 text-xs capitalize">{d.service_type || d.type}</td>
+              <td className="px-3 py-2 text-ink text-xs truncate max-w-md">
+                {(d.pickup_address || '—').split(',')[0]} →{' '}
+                {(d.dropoff_address || '—').split(',')[0]}
+              </td>
+              <td className="px-3 py-2 text-xs">
+                <span
+                  className={
+                    'px-2 py-0.5 rounded-full ' +
+                    (d.status === 'delivered'
+                      ? 'bg-success/10 text-success'
+                      : d.status === 'cancelled' || d.status === 'failed'
+                        ? 'bg-danger/10 text-danger'
+                        : 'bg-yellow-100 text-yellow-800')
+                  }
+                >
+                  {d.status.replace(/_/g, ' ')}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-right">
+                {fmtUsd(d.total_cents ?? d.fare_cents)}
+              </td>
+              <td className="px-3 py-2 text-xs text-muted">
+                {d.payment_status || (d.status === 'delivered' ? 'paid' : '—')}
+              </td>
             </tr>
           ))}
         </tbody>
