@@ -21,6 +21,7 @@ import { GamificationPage } from './pages/gamification/GamificationPage';
 import { DeliveryPage } from './pages/delivery/DeliveryPage';
 import { WalletPage } from './pages/wallet/WalletPage';
 import { MarketplacePage } from './pages/marketplace/MarketplacePage';
+import { SupportPage } from './pages/support/SupportPage';
 import { SubscriptionsPage } from './pages/revenue/SubscriptionsPage';
 import { CommissionPage } from './pages/revenue/CommissionPage';
 import { useAuthStore } from './stores/auth.store';
@@ -49,6 +50,7 @@ export function App(): JSX.Element {
         <Route path="/delivery" element={<DeliveryPage />} />
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/support" element={<SupportPage />} />
         <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/revenue/commission" element={<CommissionPage />} />
         <Route path="/settings" element={<SettingsPage />} />

@@ -37,6 +37,7 @@ const NAV_BASE = [
   { to: '/delivery', label: 'Delivery' },
   { to: '/wallet', label: 'Earnings Hub' },
   { to: '/marketplace', label: 'Marketplace' },
+  { to: '/support', label: 'Support' },
   { to: '/settings', label: 'Settings' },
 ];
 
