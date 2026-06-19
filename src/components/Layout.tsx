@@ -46,8 +46,28 @@ const REVENUE_NAV = [
   { to: '/revenue/commission', label: 'Commission' },
 ];
 
+function useOpenSupportCount() {
+  const { data: riderData } = useQuery({
+    queryKey: ['nav-rider-support-count'],
+    queryFn: () => api<{ total?: number; tickets: any[] }>('/v1/admin/rider-support/tickets?status=open&limit=1'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const { data: driverData } = useQuery({
+    queryKey: ['nav-driver-support-count'],
+    queryFn: () => api<{ total?: number; tickets: any[] }>('/v1/admin/driver-support/tickets?status=open&limit=1'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  return (
+    Number(riderData?.total ?? riderData?.tickets?.length ?? 0) +
+    Number(driverData?.total ?? driverData?.tickets?.length ?? 0)
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }): JSX.Element {
   const { user, logout, admin_role } = useAuthStore();
+  const openSupportCount = useOpenSupportCount();
   const nav = [...NAV_BASE, ...REVENUE_NAV, { to: '/admin-users', label: 'Admin team' }];
   return (
     <div className="flex min-h-screen bg-bg text-ink">
@@ -62,12 +82,17 @@ export function Layout({ children }: { children: React.ReactNode }): JSX.Element
               key={n.to}
               to={n.to}
               className={({ isActive }) =>
-                `block px-3 py-2 rounded text-sm ${
+                `flex items-center justify-between px-3 py-2 rounded text-sm ${
                   isActive ? 'bg-ink text-white' : 'text-ink hover:bg-border/40'
                 }`
               }
             >
-              {n.label}
+              <span>{n.label}</span>
+              {n.to === '/support' && openSupportCount > 0 && (
+                <span className="ml-1 text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
+                  {openSupportCount > 99 ? '99+' : openSupportCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

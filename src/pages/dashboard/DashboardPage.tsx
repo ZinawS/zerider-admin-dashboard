@@ -4,6 +4,102 @@ import { api } from '../../api/client';
 import { useRegionScope } from '../../stores/region-scope.store';
 import { PageHeader } from '../../components/PageHeader';
 
+// ---------------------------------------------------------------------------
+// Pending Actions Panel — centralized view of all items needing admin action
+// ---------------------------------------------------------------------------
+
+interface ActionItem {
+  label: string;
+  count: number;
+  urgency: 'high' | 'normal';
+  link: string;
+  icon: string;
+}
+
+function PendingActionsPanel() {
+  const nav = useNavigate();
+
+  const { data: marketplaceRev } = useQuery({
+    queryKey: ['pa-marketplace'],
+    queryFn: () => api<{ totals: { pending_listings: number | null } }>('/v1/admin/marketplace/revenue'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const { data: marketplaceListings } = useQuery({
+    queryKey: ['pa-listings-info-required'],
+    queryFn: () => api<{ total: number }>('/v1/admin/listings?status=information_required&limit=1'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const { data: listingReports } = useQuery({
+    queryKey: ['pa-listing-reports'],
+    queryFn: () => api<{ total: number } | any[]>('/v1/admin/listings/reports'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const { data: riderTickets } = useQuery({
+    queryKey: ['pa-rider-tickets'],
+    queryFn: () => api<{ tickets: any[]; total?: number }>('/v1/admin/rider-support/tickets?status=open&limit=1'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const { data: driverTickets } = useQuery({
+    queryKey: ['pa-driver-tickets'],
+    queryFn: () => api<{ tickets: any[]; total?: number }>('/v1/admin/driver-support/tickets?status=open&limit=1'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const pendingListings = Number(marketplaceRev?.totals?.pending_listings ?? 0);
+  const infoRequired   = Number((marketplaceListings as any)?.total ?? 0);
+  const reports        = Array.isArray(listingReports)
+    ? listingReports.length
+    : Number((listingReports as any)?.total ?? 0);
+  const riderOpen  = Number(riderTickets?.total ?? riderTickets?.tickets?.length ?? 0);
+  const driverOpen = Number(driverTickets?.total ?? driverTickets?.tickets?.length ?? 0);
+
+  const actions: ActionItem[] = [
+    { label: 'Listings to approve',      count: pendingListings, urgency: 'high',   link: '/marketplace', icon: '🏷️' },
+    { label: 'Listings need info',        count: infoRequired,   urgency: 'normal', link: '/marketplace', icon: '📋' },
+    { label: 'Listing reports',           count: reports,        urgency: 'high',   link: '/marketplace', icon: '🚩' },
+    { label: 'Open rider support',        count: riderOpen,      urgency: 'high',   link: '/support',     icon: '🎫' },
+    { label: 'Open driver support',       count: driverOpen,     urgency: 'high',   link: '/support',     icon: '🎫' },
+  ].filter((a) => a.count > 0);
+
+  const totalActions = actions.reduce((s, a) => s + a.count, 0);
+  if (totalActions === 0) return null;
+
+  return (
+    <div className="mb-4 border border-orange-200 bg-orange-50 rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-base">⚠️</span>
+        <span className="text-sm font-semibold text-orange-800">
+          {totalActions} action{totalActions !== 1 ? 's' : ''} require your attention
+        </span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+        {actions.map((a) => (
+          <button
+            key={a.label}
+            onClick={() => nav(a.link)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-left text-xs font-medium transition hover:brightness-95 ${
+              a.urgency === 'high'
+                ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+            }`}
+          >
+            <span className="text-base leading-none">{a.icon}</span>
+            <div>
+              <div className="text-lg font-bold leading-none">{a.count}</div>
+              <div className="text-[11px] mt-0.5 leading-tight">{a.label}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface AnalyticsSummary {
   rides_today: number;
   revenue_today_cents: number;
@@ -177,6 +273,8 @@ export function DashboardPage(): JSX.Element {
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Live operations overview." />
+
+      <PendingActionsPanel />
 
       {/* Total Platform Revenue Banner */}
       <div className="bg-gradient-to-r from-accent/10 to-accent/5 border border-accent/20 rounded-lg p-4 mb-4">
