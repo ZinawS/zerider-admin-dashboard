@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useRegionScope } from '../../stores/region-scope.store';
@@ -7,6 +7,20 @@ import { Table, type Column } from '../../components/Table';
 import { useDebounced } from '../../hooks/useDebounced';
 import { useSort } from '../../hooks/useSort';
 import { exportToCsv } from '../../lib/export';
+
+interface Promotion {
+  id: string;
+  code: string;
+  discount_type: 'percentage' | 'fixed';
+  discount_value: number;
+  max_uses: number | null;
+  uses_count: number;
+  valid_from: string | null;
+  valid_to: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+const EMPTY_PROMO = { code: '', discountType: 'percentage' as const, discountValue: 10, maxUses: '', validFrom: '', validTo: '' };
 
 interface PricingRule {
   id: string;
@@ -45,9 +59,79 @@ const EMPTY_RULE = {
 export function PricingPage(): JSX.Element {
   const qc = useQueryClient();
   const regionCode = useRegionScope((s) => s.regionCode);
+  const promoFormRef = useRef<HTMLDivElement>(null);
   const rules = useQuery({ queryKey: ['pricing','rules'], queryFn: () => api<{ items: PricingRule[] }>('/v1/admin/pricing/rules') });
   const zones = useQuery({ queryKey: ['surge','zones'], queryFn: () => api<{ items: SurgeZone[] }>('/v1/admin/surge/zones') });
   const regions = useQuery({ queryKey: ['regions'], queryFn: () => api<{ items: Region[] }>('/v1/admin/regions') });
+  const promos = useQuery({ queryKey: ['promotions'], queryFn: () => api<{ items: Promotion[] }>('/v1/admin/pricing/promotions') });
+
+  const [showPromoForm, setShowPromoForm] = useState(false);
+  const [promoForm, setPromoForm] = useState(EMPTY_PROMO);
+
+  const createPromoMutation = useMutation({
+    mutationFn: (data: typeof EMPTY_PROMO) => api('/v1/admin/pricing/promotions', {
+      method: 'POST',
+      body: {
+        code: data.code.toUpperCase().trim(),
+        discountType: data.discountType,
+        discountValue: Number(data.discountValue),
+        maxUses: data.maxUses ? Number(data.maxUses) : undefined,
+        validFrom: data.validFrom || undefined,
+        validTo: data.validTo || undefined,
+      },
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['promotions'] }); setShowPromoForm(false); setPromoForm(EMPTY_PROMO); },
+  });
+
+  const deletePromoMutation = useMutation({
+    mutationFn: (id: string) => api(`/v1/admin/pricing/promotions/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['promotions'] }),
+  });
+
+  const promoCols: Column<Promotion>[] = [
+    { key: 'code', header: 'Code', render: (p) => <span className="font-mono font-bold text-accent">{p.code}</span> },
+    {
+      key: 'discount', header: 'Discount',
+      render: (p) => p.discount_type === 'percentage'
+        ? <span>{p.discount_value}%</span>
+        : <span>${(p.discount_value / 100).toFixed(2)} off</span>,
+    },
+    {
+      key: 'usage', header: 'Usage',
+      render: (p) => <span>{p.uses_count}{p.max_uses != null ? ` / ${p.max_uses}` : ' / ∞'}</span>,
+    },
+    {
+      key: 'validity', header: 'Validity',
+      render: (p) => {
+        const from = p.valid_from ? new Date(p.valid_from).toLocaleDateString() : '—';
+        const to = p.valid_to ? new Date(p.valid_to).toLocaleDateString() : '∞';
+        return <span className="text-muted text-xs">{from} → {to}</span>;
+      },
+    },
+    {
+      key: 'status', header: 'Status',
+      render: (p) => {
+        const now = new Date();
+        const expired = p.valid_to && new Date(p.valid_to) < now;
+        const exhausted = p.max_uses != null && p.uses_count >= p.max_uses;
+        const label = !p.is_active ? 'Deactivated' : expired ? 'Expired' : exhausted ? 'Exhausted' : 'Active';
+        const cls = label === 'Active' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger';
+        return <span className={`px-2 py-0.5 rounded-full text-xs ${cls}`}>{label}</span>;
+      },
+    },
+    {
+      key: 'actions', header: '',
+      render: (p) => (
+        <button
+          onClick={() => { if (confirm(`Deactivate code ${p.code}?`)) deletePromoMutation.mutate(p.id); }}
+          className="text-xs text-danger hover:underline disabled:opacity-40"
+          disabled={deletePromoMutation.isPending}
+        >
+          Deactivate
+        </button>
+      ),
+    },
+  ];
 
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
@@ -349,6 +433,88 @@ export function PricingPage(): JSX.Element {
         sortKey={zoneSort.key}
         sortDir={zoneSort.dir}
         onSort={toggleZoneSort}
+      />
+
+      {/* ── Promo Codes ── */}
+      <div className="flex items-center gap-3 mt-8 mb-3">
+        <h2 className="text-lg font-medium">Promo codes</h2>
+        <button
+          onClick={() => setShowPromoForm((v) => !v)}
+          className="px-3 py-1.5 text-xs bg-accent text-white rounded hover:bg-accent/90 ml-auto"
+        >
+          + Create code
+        </button>
+      </div>
+
+      {showPromoForm && (
+        <div ref={promoFormRef} className="border border-border rounded-xl p-5 mb-4 bg-surface grid grid-cols-2 gap-4">
+          <Field label="Code (auto-uppercased)">
+            <input
+              value={promoForm.code}
+              onChange={(e) => setPromoForm((f) => ({ ...f, code: e.target.value }))}
+              placeholder="SUMMER20"
+              className="w-full px-3 py-2 border border-border rounded text-sm bg-white text-ink"
+            />
+          </Field>
+          <Field label="Discount type">
+            <select
+              value={promoForm.discountType}
+              onChange={(e) => setPromoForm((f) => ({ ...f, discountType: e.target.value as 'percentage' | 'fixed' }))}
+              className="w-full px-3 py-2 border border-border rounded text-sm bg-white text-ink"
+            >
+              <option value="percentage">Percentage (%)</option>
+              <option value="fixed">Fixed amount (¢)</option>
+            </select>
+          </Field>
+          <Field label={promoForm.discountType === 'percentage' ? 'Discount %' : 'Discount (cents)'}>
+            <NumberInput v={promoForm.discountValue} on={(n) => setPromoForm((f) => ({ ...f, discountValue: n }))} />
+          </Field>
+          <Field label="Max uses (blank = unlimited)">
+            <input
+              type="number"
+              value={promoForm.maxUses}
+              onChange={(e) => setPromoForm((f) => ({ ...f, maxUses: e.target.value }))}
+              placeholder="100"
+              className="w-full px-3 py-2 border border-border rounded text-sm bg-white text-ink"
+            />
+          </Field>
+          <Field label="Valid from (optional)">
+            <input
+              type="datetime-local"
+              value={promoForm.validFrom}
+              onChange={(e) => setPromoForm((f) => ({ ...f, validFrom: e.target.value }))}
+              className="w-full px-3 py-2 border border-border rounded text-sm bg-white text-ink"
+            />
+          </Field>
+          <Field label="Valid until (optional)">
+            <input
+              type="datetime-local"
+              value={promoForm.validTo}
+              onChange={(e) => setPromoForm((f) => ({ ...f, validTo: e.target.value }))}
+              className="w-full px-3 py-2 border border-border rounded text-sm bg-white text-ink"
+            />
+          </Field>
+          <div className="col-span-2 flex gap-2 mt-1">
+            <button
+              onClick={() => createPromoMutation.mutate(promoForm)}
+              disabled={!promoForm.code.trim() || createPromoMutation.isPending}
+              className="px-4 py-2 bg-accent text-white rounded text-sm disabled:opacity-50"
+            >
+              {createPromoMutation.isPending ? 'Creating…' : 'Create promo code'}
+            </button>
+            <button onClick={() => { setShowPromoForm(false); setPromoForm(EMPTY_PROMO); }} className="px-4 py-2 border border-border rounded text-sm">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Table
+        rows={promos.data?.items ?? []}
+        columns={promoCols}
+        rowKey={(p) => p.id}
+        emptyMessage={promos.isLoading ? 'Loading…' : 'No promo codes yet.'}
+        isLoading={promos.isLoading}
       />
     </>
   );
