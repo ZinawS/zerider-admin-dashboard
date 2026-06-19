@@ -24,6 +24,7 @@ import { MarketplacePage } from './pages/marketplace/MarketplacePage';
 import { SupportPage } from './pages/support/SupportPage';
 import { SubscriptionsPage } from './pages/revenue/SubscriptionsPage';
 import { CommissionPage } from './pages/revenue/CommissionPage';
+import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { useAuthStore } from './stores/auth.store';
 
 export function App(): JSX.Element {
@@ -51,6 +52,7 @@ export function App(): JSX.Element {
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/support" element={<SupportPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/revenue/commission" element={<CommissionPage />} />
         <Route path="/settings" element={<SettingsPage />} />

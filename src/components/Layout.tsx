@@ -29,6 +29,7 @@ const NAV_BASE = [
   { to: '/payouts', label: 'Payouts' },
   { to: '/rides', label: 'Rides' },
   { to: '/pricing', label: 'Pricing' },
+  { to: '/analytics', label: 'Analytics' },
   { to: '/reports', label: 'Reports' },
   { to: '/regions', label: 'Regions' },
   { to: '/audit', label: 'Audit log' },
