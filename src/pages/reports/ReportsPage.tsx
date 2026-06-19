@@ -257,7 +257,7 @@ function DeliveriesReport({ range }: { range: { start: string; end: string } }) 
   const { data, isLoading } = useQuery({
     queryKey: ['report-deliveries', range.start, range.end],
     queryFn: () => api<{ items: DeliveryItem[]; total: number; has_more: boolean }>(
-      `/v1/deliveries/admin/all?limit=500`,
+      `/v1/admin/deliveries?limit=500&page=1`,
     ),
   });
 
@@ -982,7 +982,7 @@ function MarketplaceReport({ range }: { range: { start: string; end: string } })
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {byType.length > 0 && (
           <ChartCard title="Revenue by listing type">
-            <BarChart data={byType.map((b: any) => ({ name: LISTING_TYPE_LABEL[b.listing_type] ?? b.listing_type, revenue: Number(b.total_fee_cents) / 100, count: Number(b.paid_count) }))}>
+            <BarChart data={byType.map((b: any) => ({ name: LISTING_TYPE_LABEL[b.listing_type] ?? b.listing_type, revenue: Number(b.total_fee_cents) / 100, count: Number(b.count ?? b.paid_count ?? 0) }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
@@ -993,9 +993,9 @@ function MarketplaceReport({ range }: { range: { start: string; end: string } })
             </BarChart>
           </ChartCard>
         )}
-        {timeline.length > 0 && (
+        {timeline.filter((t: any) => t.date).length > 0 && (
           <ChartCard title="Daily listing fee revenue">
-            <LineChart data={[...timeline].reverse().map((t: any) => ({ day: (t.day as string).slice(5), revenue: Number(t.revenue_cents) / 100 }))}>
+            <LineChart data={[...timeline].filter((t: any) => t.date).reverse().map((t: any) => ({ day: String(t.date).slice(5), revenue: Number(t.revenue_cents) / 100 }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="day" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />

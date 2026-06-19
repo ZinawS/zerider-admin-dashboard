@@ -640,7 +640,7 @@ function ReportsTab() {
     queryKey: ['admin-marketplace-reports', page],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      return api<ReportsResponse>(`/v1/admin/reports?${params.toString()}`);
+      return api<ReportsResponse>(`/v1/admin/listings/reports?${params.toString()}`);
     },
   });
 
