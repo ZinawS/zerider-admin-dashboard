@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useRegionScope } from '../../stores/region-scope.store.js';
@@ -19,6 +19,13 @@ interface Delivery {
   dropoff_address: string | null;
   dropoff_lat: number | null;
   dropoff_lng: number | null;
+
+  // Business names (populated by API)
+  requester_name?: string | null;
+  driver_name?: string | null;
+  recipient_name_display?: string | null;
+  sender_name?: string | null;
+  receiver_name?: string | null;
 
   // Package Information
   package_type: string | null;
@@ -65,11 +72,31 @@ interface Delivery {
   fare_cents: number | null;
   currency: string | null;
 
+  // Commission & Earnings breakdown
+  commission_cents?: number | null;
+  driver_payout_cents?: number | null;
+  platform_fee_cents?: number | null;
+  booking_fee_cents?: number | null;
+  service_fee_cents?: number | null;
+  tax_cents?: number | null;
+  tip_cents?: number | null;
+  bonus_cents?: number | null;
+
+  // Payment status
+  payment_status?: string | null;
+
   // Timestamps
   created_at: string;
   updated_at: string | null;
   picked_up_at: string | null;
   delivered_at: string | null;
+
+  // Status history
+  status_history?: Array<{
+    status: string;
+    timestamp: string;
+    note?: string;
+  }> | null;
 
   // Tracking & Proof
   tracking_points_count?: number;
@@ -81,7 +108,12 @@ interface ListResponse {
   has_more: boolean;
 }
 
-const STATUSES = ['', 'pending', 'assigned', 'picked_up', 'in_transit', 'delivered', 'failed', 'cancelled'];
+const DELIVERY_STATUSES = ['', 'pending', 'assigned', 'picked_up', 'in_transit', 'delivered', 'failed', 'cancelled'];
+const DELIVERY_SERVICE_TYPES = ['', 'food', 'grocery', 'package', 'courier', 'pharmacy', 'retail'];
+
+function useDeliveryConfig() {
+  return { statuses: DELIVERY_STATUSES, serviceTypes: DELIVERY_SERVICE_TYPES };
+}
 
 function deliveryStatusColor(s: string): string {
   switch (s) {
@@ -91,7 +123,7 @@ function deliveryStatusColor(s: string): string {
     case 'in_transit': return 'bg-purple-100 text-purple-800';
     case 'delivered':  return 'bg-green-100 text-green-800';
     case 'failed':     return 'bg-red-100 text-red-800';
-    case 'cancelled':  return 'bg-gray-100 text-gray-600';
+    case 'cancelled':  return 'bg-gray-100 text-gray-800';
     default:           return 'bg-gray-100 text-gray-600';
   }
 }
@@ -145,8 +177,8 @@ function DeliveryDetailPanel({ delivery, onClose }: DetailPanelProps): JSX.Eleme
           <div>
             <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">General</div>
             <DetailRow label="ID" value={delivery.id} />
-            <DetailRow label="Requester" value={delivery.requester_id} />
-            <DetailRow label="Driver" value={delivery.driver_id ?? 'Unassigned'} />
+            <DetailRow label="Requester" value={delivery.requester_name ?? delivery.requester_id} />
+            <DetailRow label="Driver" value={delivery.driver_name ?? delivery.driver_id ?? 'Unassigned'} />
             <DetailRow label="Service Type" value={delivery.service_type || delivery.type} />
             <DetailRow label="Created" value={new Date(delivery.created_at).toLocaleString()} />
             <DetailRow label="Updated" value={delivery.updated_at ? new Date(delivery.updated_at).toLocaleString() : null} />
@@ -273,27 +305,68 @@ function DeliveryDetailPanel({ delivery, onClose }: DetailPanelProps): JSX.Eleme
   );
 }
 
+function useUserNames(ids: string[]) {
+  const key = useMemo(() => ids.filter(Boolean).sort().join(','), [ids]);
+  return useQuery({
+    queryKey: ['delivery-user-names', key],
+    queryFn: async () => {
+      const unique = [...new Set(ids.filter(Boolean))];
+      const names: Record<string, string> = {};
+      await Promise.allSettled(
+        unique.map(async (id) => {
+          const u = await api<any>(`/v1/admin/users/${id}`).catch(() => null);
+          if (u && !u.statusCode) {
+            const profile = u.rider ?? u.driver ?? u;
+            const name = [profile.first_name, profile.last_name].filter(Boolean).join(' ')
+              || profile.email || u.email || id.slice(0, 8);
+            names[id] = name;
+          } else {
+            names[id] = id.slice(0, 8);
+          }
+        }),
+      );
+      return names;
+    },
+    enabled: ids.filter(Boolean).length > 0,
+    staleTime: 300_000,
+  });
+}
+
 export function DeliveryPage(): JSX.Element {
   const [status, setStatus] = useState('');
+  const [serviceType, setServiceType] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Delivery | null>(null);
   const regionCode = useRegionScope((s) => s.regionCode);
   const debounced = useDebounced(search, 300);
+  const { statuses, serviceTypes } = useDeliveryConfig();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-deliveries', status, debounced, regionCode, page],
+    queryKey: ['admin-deliveries', status, serviceType, debounced, regionCode, page],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      if (status) params.set('status', status);
-      if (debounced) params.set('q', debounced);
-      if (regionCode) params.set('region', regionCode);
-      return api<ListResponse>(`/v1/deliveries/admin/all?${params.toString()}`);
+      if (status)      params.set('status', status);
+      if (serviceType) params.set('service_type', serviceType);
+      if (debounced)   params.set('q', debounced);
+      if (regionCode)  params.set('region', regionCode);
+      return api<ListResponse>(`/v1/admin/deliveries?${params.toString()}`);
     },
   });
 
-  const items = data?.items ?? [];
+  const items = useMemo(() => data?.items ?? [], [data]);
   const total = data?.total ?? items.length;
+
+  const allUserIds = useMemo(
+    () => items.flatMap((d) => [d.requester_id, d.driver_id].filter(Boolean) as string[]),
+    [items],
+  );
+  const { data: userNames = {} } = useUserNames(allUserIds);
+
+  function resolvedName(id: string | null | undefined): string | null {
+    if (!id) return null;
+    return userNames[id] ?? null;
+  }
 
   return (
     <>
@@ -314,8 +387,17 @@ export function DeliveryPage(): JSX.Element {
           onChange={(e) => { setStatus(e.target.value); setPage(1); }}
           className="px-3 py-1.5 text-xs bg-white text-ink border border-border rounded"
         >
-          {STATUSES.map((s) => (
+          {statuses.map((s) => (
             <option key={s || 'all'} value={s}>{s ? s.replace(/_/g, ' ') : 'all statuses'}</option>
+          ))}
+        </select>
+        <select
+          value={serviceType}
+          onChange={(e) => { setServiceType(e.target.value); setPage(1); }}
+          className="px-3 py-1.5 text-xs bg-white text-ink border border-border rounded"
+        >
+          {serviceTypes.map((s) => (
+            <option key={s || 'all'} value={s}>{s ? s : 'all service types'}</option>
           ))}
         </select>
         <span className="ml-auto text-xs text-muted self-center">{total} deliver{total !== 1 ? 'ies' : 'y'}</span>
@@ -323,7 +405,7 @@ export function DeliveryPage(): JSX.Element {
 
       {/* Status pills */}
       <div className="flex gap-1 flex-wrap mb-3">
-        {STATUSES.map((s) => (
+        {statuses.map((s) => (
           <button
             key={s || 'all'}
             onClick={() => { setStatus(s); setPage(1); }}
@@ -370,26 +452,31 @@ export function DeliveryPage(): JSX.Element {
                   <td colSpan={10} className="px-3 py-8 text-center text-muted">No deliveries match.</td>
                 </tr>
               )
-              : items.map((d) => (
+              : items.map((d) => {
+                const requesterDisplay = resolvedName(d.requester_id) ?? d.requester_id.slice(0, 8);
+                const driverDisplay = d.driver_id ? (resolvedName(d.driver_id) ?? d.driver_id.slice(0, 8)) : null;
+                return (
                   <tr
                     key={d.id}
-                    onClick={() => setSelected(d)}
+                    onClick={() => setSelected({ ...d, requester_name: resolvedName(d.requester_id), driver_name: d.driver_id ? resolvedName(d.driver_id) : null })}
                     className="cursor-pointer border-t border-border hover:bg-surface"
                   >
-                    <td className="px-3 py-2 font-mono text-xs text-muted">{d.id.slice(0, 8)}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-muted" title={d.id}>{d.id.slice(0, 8)}</td>
                     <td className="px-3 py-2 text-xs capitalize">{d.service_type || d.type}</td>
                     <td className="px-3 py-2 text-xs">
                       <span className={`px-2 py-0.5 rounded-full ${deliveryStatusColor(d.status)}`}>
                         {d.status.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs text-muted">{d.requester_id.slice(0, 8)}</td>
-                    <td className="px-3 py-2 text-xs">
-                      {d.driver_id ? (
-                        <span className="font-mono text-muted">{d.driver_id.slice(0, 8)}</span>
-                      ) : (
-                        <span className="text-muted italic">Unassigned</span>
-                      )}
+                    <td className="px-3 py-2 text-xs" title={d.requester_id}>
+                      {resolvedName(d.requester_id)
+                        ? <span>{requesterDisplay}</span>
+                        : <span className="font-mono text-muted">{requesterDisplay}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs" title={d.driver_id ?? ''}>
+                      {driverDisplay
+                        ? <span>{driverDisplay}</span>
+                        : <span className="text-muted italic">Unassigned</span>}
                     </td>
                     <td className="px-3 py-2 text-xs truncate max-w-[160px]">
                       {(d.pickup_address ?? '—').split(',')[0]}
@@ -407,7 +494,8 @@ export function DeliveryPage(): JSX.Element {
                       {new Date(d.created_at).toLocaleString()}
                     </td>
                   </tr>
-                ))}
+                );
+              })}
           </tbody>
         </table>
       </div>

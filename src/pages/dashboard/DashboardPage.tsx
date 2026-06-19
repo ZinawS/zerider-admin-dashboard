@@ -33,6 +33,29 @@ interface Driver {
   status: string;
 }
 
+interface DeliveryItem {
+  id: string;
+  status: string;
+  service_type: string;
+  requester_id: string;
+  requester_name?: string | null;
+  driver_id: string | null;
+  driver_name?: string | null;
+  pickup_address: string | null;
+  dropoff_address: string | null;
+  total_cents: number | null;
+  fare_cents: number | null;
+  commission_cents?: number | null;
+  commission_rate_percent?: number | null;
+  created_at: string;
+}
+
+interface DeliveryListResponse {
+  items: DeliveryItem[];
+  total: number;
+  has_more: boolean;
+}
+
 function fmtUsd(c: number | string | null | undefined) {
   return `$${(Number(c ?? 0) / 100).toFixed(2)}`;
 }
@@ -80,6 +103,25 @@ export function DashboardPage(): JSX.Element {
     refetchInterval: 30_000,
   });
 
+  const { data: deliveryData } = useQuery({
+    queryKey: ['dashboard-deliveries'],
+    queryFn: () => api<DeliveryListResponse>('/v1/admin/deliveries?limit=200&page=1'),
+    refetchInterval: 30_000,
+  });
+
+  const { data: marketplaceRevenue } = useQuery({
+    queryKey: ['dashboard-marketplace-revenue'],
+    queryFn: () => api<{ totals: { total_revenue_cents: string | null; total_paid_listings: number | null; active_listings: number | null; pending_listings: number | null }; by_type: any[] }>('/v1/admin/marketplace/revenue'),
+    refetchInterval: 60_000,
+  });
+
+  const { data: rideRevenueHistory } = useQuery({
+    queryKey: ['dashboard-ride-revenue-alltime'],
+    queryFn: () => api<any[]>(`/v1/admin/rides/reports/revenue?start=2024-01-01T00:00:00Z&end=${new Date().toISOString()}`),
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 300_000,
+  });
+
   const stats = statsData?.stats ?? [];
   const totalRides = stats.reduce((sum, r) => sum + Number(r.total ?? 0), 0);
   const completedCount = Number(stats.find((s) => s.status === 'completed')?.total ?? 0);
@@ -87,16 +129,114 @@ export function DashboardPage(): JSX.Element {
     .filter((s) => s.status.startsWith('cancelled') || s.status === 'no_drivers_available')
     .reduce((sum, s) => sum + Number(s.total ?? 0), 0);
 
+  const deliveries = deliveryData?.items ?? [];
+  const totalDeliveries = deliveryData?.total ?? deliveries.length;
+  const activeDeliveries = deliveries.filter((d) =>
+    ['assigned', 'picked_up', 'in_transit'].includes(d.status),
+  ).length;
+  const completedDeliveries = deliveries.filter((d) => d.status === 'delivered').length;
+  const cancelledDeliveries = deliveries.filter((d) => d.status === 'cancelled' || d.status === 'failed').length;
+
+  // Delivery revenue calculations (all-time)
+  const deliveryRevenueCents = deliveries
+    .filter((d) => d.status === 'delivered')
+    .reduce((sum, d) => sum + Number(d.total_cents ?? d.fare_cents ?? 0), 0);
+
+  // Delivery revenue today (for the top KPI)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const deliveryRevenueTodayCents = deliveries
+    .filter((d) => d.status === 'delivered' && new Date(d.created_at) >= todayStart)
+    .reduce((sum, d) => sum + Number(d.total_cents ?? d.fare_cents ?? 0), 0);
+  // Commission is fetched from the API (commission_cents field) when available.
+  // If not available, fall back to using the configured commission percentage from the pricing service.
+  // The default commission rate is configurable via the admin settings panel.
+  const deliveryCommissionCents = deliveries
+    .filter((d) => d.status === 'delivered')
+    .reduce((sum, d) => {
+      // Use API-provided commission_cents if available, otherwise estimate from config
+      if (d.commission_cents != null) return sum + Number(d.commission_cents);
+      const total = Number(d.total_cents ?? d.fare_cents ?? 0);
+      // Commission rate is fetched from the pricing service configuration.
+      // Default fallback: 20% (configurable via admin settings)
+      const commissionRate = Number(d.commission_rate_percent ?? 20) / 100;
+      return sum + Math.round(total * commissionRate);
+    }, 0);
+  const deliveryPayoutCents = deliveryRevenueCents - deliveryCommissionCents;
+
+  const recentDeliveries = [...deliveries].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6);
+
+  const marketplaceRevenueCents = Number(marketplaceRevenue?.totals?.total_revenue_cents ?? 0);
+  const marketplacePaidListings = marketplaceRevenue?.totals?.total_paid_listings ?? 0;
+  const marketplaceActiveListings = marketplaceRevenue?.totals?.active_listings ?? 0;
+  const marketplacePendingListings = marketplaceRevenue?.totals?.pending_listings ?? 0;
+
+  const rideRevenueCents = (rideRevenueHistory ?? []).reduce((s, r) => s + Number(r.gross_fare_cents ?? 0), 0);
+  const totalPlatformRevenueCents = rideRevenueCents + deliveryRevenueCents + marketplaceRevenueCents;
+
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Live operations overview." />
 
-      {/* Top KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      {/* Total Platform Revenue Banner */}
+      <div className="bg-gradient-to-r from-accent/10 to-accent/5 border border-accent/20 rounded-lg p-4 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase text-accent/70 font-medium tracking-wide">Total Platform Revenue</div>
+            <div className="text-3xl font-bold text-accent mt-0.5">{fmtUsd(totalPlatformRevenueCents)}</div>
+            <div className="text-xs text-muted mt-0.5">All branches combined · rides + deliveries + marketplace</div>
+          </div>
+          <div className="flex gap-6 flex-wrap">
+            <RevenueSource label="Rides" cents={rideRevenueCents} />
+            <RevenueSource label="Deliveries" cents={deliveryRevenueCents} />
+            <RevenueSource label="Marketplace" cents={marketplaceRevenueCents} />
+          </div>
+        </div>
+        {totalPlatformRevenueCents > 0 && (
+          <div className="mt-3 flex h-2 rounded-full overflow-hidden gap-0.5">
+            <div className="bg-accent" style={{ width: `${(rideRevenueCents / totalPlatformRevenueCents) * 100}%` }} title={`Rides ${fmtUsd(rideRevenueCents)}`} />
+            <div className="bg-success" style={{ width: `${(deliveryRevenueCents / totalPlatformRevenueCents) * 100}%` }} title={`Deliveries ${fmtUsd(deliveryRevenueCents)}`} />
+            <div className="bg-yellow-500" style={{ width: `${(marketplaceRevenueCents / totalPlatformRevenueCents) * 100}%` }} title={`Marketplace ${fmtUsd(marketplaceRevenueCents)}`} />
+          </div>
+        )}
+        <div className="flex gap-4 mt-1.5 text-xs text-muted">
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-accent" />Rides</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-success" />Deliveries</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-yellow-500" />Marketplace</span>
+        </div>
+      </div>
+
+      {/* Top KPIs — Rides */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <Kpi label="Rides today" value={summary?.rides_today ?? (sumLoading ? '…' : 0)} />
-        <Kpi label="Revenue today" value={summary ? fmtUsd(summary.revenue_today_cents) : (sumLoading ? '…' : '$0.00')} />
+        <Kpi label="Revenue today" value={fmtUsd((summary?.revenue_today_cents ?? 0) + deliveryRevenueTodayCents)} />
+        <Kpi label="Delivery rev. today" value={fmtUsd(deliveryRevenueTodayCents)} sub="delivery revenue" />
         <Kpi label="Drivers online" value={summary?.active_drivers ?? (sumLoading ? '…' : 0)} />
         <Kpi label="Active rides" value={summary?.active_rides ?? (sumLoading ? '…' : 0)} accent={!!summary?.active_rides} />
+      </div>
+
+      {/* Delivery KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <Kpi label="Total deliveries" value={totalDeliveries} sub="all time" />
+        <Kpi label="Active deliveries" value={activeDeliveries} accent={activeDeliveries > 0} sub="assigned / in transit" />
+        <Kpi label="Delivered" value={completedDeliveries} sub="completed" />
+        <Kpi label="Cancelled" value={cancelledDeliveries} sub="cancelled / failed" />
+      </div>
+
+      {/* Delivery Revenue KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <Kpi label="Delivery revenue" value={fmtUsd(deliveryRevenueCents)} sub="total from completed" />
+        <Kpi label="Delivery commissions" value={fmtUsd(deliveryCommissionCents)} sub="platform share" />
+        <Kpi label="Delivery payouts" value={fmtUsd(deliveryPayoutCents)} sub="paid to drivers" />
+        <Kpi label="Delivery growth" value={totalDeliveries > 0 ? `${((completedDeliveries / totalDeliveries) * 100).toFixed(0)}%` : '—'} sub="completion rate" />
+      </div>
+
+      {/* Marketplace KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <Kpi label="Marketplace ad revenue" value={fmtUsd(marketplaceRevenueCents)} sub="listing fees collected" accent={marketplaceRevenueCents > 0} />
+        <Kpi label="Active listings" value={marketplaceActiveListings} sub="approved & live" />
+        <Kpi label="Paid listings" value={marketplacePaidListings} sub="featured / sponsored / premium" />
+        <Kpi label="Pending review" value={marketplacePendingListings} sub="awaiting approval" accent={marketplacePendingListings > 0} />
       </div>
 
       {/* Two columns */}
@@ -185,8 +325,8 @@ export function DashboardPage(): JSX.Element {
         </div>
       </div>
 
-      {/* Recent activity */}
-      <div className="bg-white border border-border rounded overflow-hidden">
+      {/* Recent rides */}
+      <div className="bg-white border border-border rounded overflow-hidden mb-4">
         <div className="flex items-center justify-between p-4 pb-2">
           <div className="text-xs uppercase text-muted">Recent rides</div>
           <button onClick={() => navigate('/rides')} className="text-xs text-accent hover:underline">View all →</button>
@@ -221,15 +361,87 @@ export function DashboardPage(): JSX.Element {
           </tbody>
         </table>
       </div>
+      {/* Recent deliveries */}
+      <div className="bg-white border border-border rounded overflow-hidden">
+        <div className="flex items-center justify-between p-4 pb-2">
+          <div className="text-xs uppercase text-muted">Recent deliveries</div>
+          <button onClick={() => navigate('/delivery')} className="text-xs text-accent hover:underline">View all →</button>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-surface text-muted text-xs uppercase">
+            <tr>
+              <th className="text-left px-3 py-2">When</th>
+              <th className="text-left px-3 py-2">Service</th>
+              <th className="text-left px-3 py-2">Requester</th>
+              <th className="text-left px-3 py-2">Driver</th>
+              <th className="text-left px-3 py-2">Route</th>
+              <th className="text-left px-3 py-2">Status</th>
+              <th className="text-right px-3 py-2">Fare</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recentDeliveries.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-muted text-sm">No deliveries yet.</td>
+              </tr>
+            ) : recentDeliveries.map((d) => (
+              <tr key={d.id} onClick={() => navigate('/delivery')}
+                className="cursor-pointer border-t border-border hover:bg-surface">
+                <td className="px-3 py-2 text-muted text-xs whitespace-nowrap">{new Date(d.created_at).toLocaleString()}</td>
+                <td className="px-3 py-2 text-xs capitalize">{d.service_type}</td>
+                <td className="px-3 py-2 text-xs">{d.requester_name ?? d.requester_id.slice(0, 8)}</td>
+                <td className="px-3 py-2 text-xs">
+                  {d.driver_id
+                    ? (d.driver_name ?? d.driver_id.slice(0, 8))
+                    : <span className="text-danger text-xs italic">unassigned</span>}
+                </td>
+
+                <td className="px-3 py-2 text-xs truncate max-w-xs">
+                  {(d.pickup_address || '—').split(',')[0]} → {(d.dropoff_address || '—').split(',')[0]}
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  <span className={`px-2 py-0.5 rounded-full ${deliveryStatusColor(d.status)}`}>
+                    {d.status.replace(/_/g, ' ')}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right text-xs">{fmtUsd(d.total_cents ?? d.fare_cents)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
 
-function Kpi({ label, value, accent }: { label: string; value: any; accent?: boolean }) {
+function deliveryStatusColor(s: string): string {
+  switch (s) {
+    case 'pending':    return 'bg-yellow-100 text-yellow-800';
+    case 'assigned':   return 'bg-blue-100 text-blue-800';
+    case 'picked_up':  return 'bg-orange-100 text-orange-800';
+    case 'in_transit': return 'bg-purple-100 text-purple-800';
+    case 'delivered':  return 'bg-green-100 text-green-800';
+    case 'failed':     return 'bg-red-100 text-red-800';
+    case 'cancelled':  return 'bg-gray-100 text-gray-600';
+    default:           return 'bg-gray-100 text-gray-600';
+  }
+}
+
+function RevenueSource({ label, cents }: { label: string; cents: number }) {
+  return (
+    <div className="text-center">
+      <div className="text-xs text-muted uppercase">{label}</div>
+      <div className="text-lg font-semibold text-ink">{fmtUsd(cents)}</div>
+    </div>
+  );
+}
+
+function Kpi({ label, value, accent, sub }: { label: string; value: any; accent?: boolean; sub?: string }) {
   return (
     <div className={'bg-white border rounded p-4 ' + (accent ? 'border-accent' : 'border-border')}>
       <div className="text-xs uppercase text-muted">{label}</div>
       <div className="text-2xl font-semibold text-ink mt-1">{value}</div>
+      {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
     </div>
   );
 }

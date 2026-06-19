@@ -22,7 +22,7 @@ function ChartCard({ title, children, height = 240 }: { title: string; children:
   );
 }
 
-type Tab = 'revenue' | 'deliveries' | 'drivers' | 'riders' | 'refunds' | 'operations';
+type Tab = 'revenue' | 'deliveries' | 'drivers' | 'riders' | 'marketplace' | 'refunds' | 'operations';
 type RangePreset = 'today' | '7d' | '30d' | 'mtd' | 'lastmonth' | 'custom';
 
 function fmtUsd(c: number | string | null | undefined) {
@@ -183,10 +183,10 @@ export function ReportsPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-border mb-4">
-        {(['revenue', 'deliveries', 'drivers', 'riders', 'refunds', 'operations'] as Tab[]).map((t) => (
+      <div className="flex gap-1 border-b border-border mb-4 overflow-x-auto">
+        {(['revenue', 'deliveries', 'drivers', 'riders', 'marketplace', 'refunds', 'operations'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={'px-4 py-2 capitalize text-sm font-medium border-b-2 transition ' +
+            className={'px-4 py-2 capitalize text-sm font-medium border-b-2 transition whitespace-nowrap ' +
               (tab === t ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-ink')}>
             {t}
           </button>
@@ -197,6 +197,7 @@ export function ReportsPage(): JSX.Element {
       {tab === 'deliveries' && <DeliveriesReport range={range} />}
       {tab === 'drivers' && <DriversReport params={params.toString()} range={range} />}
       {tab === 'riders' && <RidersReport params={params.toString()} range={range} />}
+      {tab === 'marketplace' && <MarketplaceReport range={range} />}
       {tab === 'refunds' && <RefundsReport params={params.toString()} range={range} />}
       {tab === 'operations' && <OpsReport params={params.toString()} range={range} />}
     </>
@@ -227,12 +228,29 @@ interface DeliveryItem {
   fare_cents: number | null;
   base_fare_cents: number | null;
   distance_fare_cents: number | null;
+  weight_surcharge_cents: number | null;
+  fragile_surcharge_cents: number | null;
   created_at: string;
   delivered_at: string | null;
+  picked_up_at: string | null;
+  cancelled_at: string | null;
+  failed_at: string | null;
   requester_id: string;
   driver_id: string | null;
   pickup_address: string | null;
   dropoff_address: string | null;
+  recipient_name: string | null;
+  recipient_phone: string | null;
+  pickup_contact_name: string | null;
+  pickup_contact_phone: string | null;
+  package_type: string | null;
+  package_description: string | null;
+  package_weight_kg: number | null;
+  is_fragile: boolean | null;
+  estimated_distance_km: number | null;
+  estimated_duration_minutes: number | null;
+  cancellation_reason: string | null;
+  currency: string | null;
 }
 
 function DeliveriesReport({ range }: { range: { start: string; end: string } }) {
@@ -283,15 +301,35 @@ function DeliveriesReport({ range }: { range: { start: string; end: string } }) 
     return Object.entries(map).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count);
   }, [rows]);
 
-  const exportColumns = [
-    { header: 'ID', getValue: (r: DeliveryItem) => r.id },
-    { header: 'Status', getValue: (r: DeliveryItem) => r.status },
-    { header: 'Service Type', getValue: (r: DeliveryItem) => r.service_type },
-    { header: 'Revenue', getValue: (r: DeliveryItem) => fmtUsd(r.total_cents ?? r.fare_cents) },
-    { header: 'Created', getValue: (r: DeliveryItem) => new Date(r.created_at).toLocaleString() },
-    { header: 'Delivered', getValue: (r: DeliveryItem) => r.delivered_at ? new Date(r.delivered_at).toLocaleString() : '' },
-    { header: 'Pickup', getValue: (r: DeliveryItem) => r.pickup_address ?? '' },
-    { header: 'Dropoff', getValue: (r: DeliveryItem) => r.dropoff_address ?? '' },
+  const exportColumns: ExportColumn<DeliveryItem>[] = [
+    { header: 'ID', getValue: (r) => r.id },
+    { header: 'Status', getValue: (r) => r.status },
+    { header: 'Service Type', getValue: (r) => r.service_type },
+    { header: 'Requester ID', getValue: (r) => r.requester_id },
+    { header: 'Driver / Delivery Person ID', getValue: (r) => r.driver_id ?? '' },
+    { header: 'Recipient Name', getValue: (r) => r.recipient_name ?? '' },
+    { header: 'Recipient Phone', getValue: (r) => r.recipient_phone ?? '' },
+    { header: 'Pickup Contact', getValue: (r) => r.pickup_contact_name ?? '' },
+    { header: 'Pickup Contact Phone', getValue: (r) => r.pickup_contact_phone ?? '' },
+    { header: 'Package Type', getValue: (r) => r.package_type ?? '' },
+    { header: 'Package Description', getValue: (r) => r.package_description ?? '' },
+    { header: 'Weight (kg)', getValue: (r) => r.package_weight_kg != null ? String(r.package_weight_kg) : '' },
+    { header: 'Fragile', getValue: (r) => r.is_fragile ? 'Yes' : 'No' },
+    { header: 'Distance (km)', getValue: (r) => r.estimated_distance_km != null ? String(r.estimated_distance_km) : '' },
+    { header: 'Duration (min)', getValue: (r) => r.estimated_duration_minutes != null ? String(r.estimated_duration_minutes) : '' },
+    { header: 'Base Fare', getValue: (r) => fmtUsd(r.base_fare_cents) },
+    { header: 'Distance Fare', getValue: (r) => fmtUsd(r.distance_fare_cents) },
+    { header: 'Weight Surcharge', getValue: (r) => fmtUsd(r.weight_surcharge_cents) },
+    { header: 'Fragile Surcharge', getValue: (r) => fmtUsd(r.fragile_surcharge_cents) },
+    { header: 'Total Revenue', getValue: (r) => fmtUsd(r.total_cents ?? r.fare_cents) },
+    { header: 'Currency', getValue: (r) => r.currency ?? 'USD' },
+    { header: 'Pickup Address', getValue: (r) => r.pickup_address ?? '' },
+    { header: 'Dropoff Address', getValue: (r) => r.dropoff_address ?? '' },
+    { header: 'Created', getValue: (r) => new Date(r.created_at).toLocaleString() },
+    { header: 'Picked Up', getValue: (r) => r.picked_up_at ? new Date(r.picked_up_at).toLocaleString() : '' },
+    { header: 'Delivered', getValue: (r) => r.delivered_at ? new Date(r.delivered_at).toLocaleString() : '' },
+    { header: 'Cancelled / Failed', getValue: (r) => (r.cancelled_at ?? r.failed_at) ? new Date((r.cancelled_at ?? r.failed_at)!).toLocaleString() : '' },
+    { header: 'Cancellation Reason', getValue: (r) => r.cancellation_reason ?? '' },
   ];
 
   return (
@@ -339,32 +377,54 @@ function DeliveriesReport({ range }: { range: { start: string; end: string } }) 
         <ExportMenu rows={rows} filename={`deliveries-${range.start.slice(0,10)}-${range.end.slice(0,10)}`} columns={exportColumns} title="Delivery Report" subtitle={subtitle} />
       </div>
 
-      <div className="bg-white border border-border rounded overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white border border-border rounded overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-surface text-muted text-xs uppercase">
             <tr>
               <th className="text-left px-3 py-2">ID</th>
               <th className="text-left px-3 py-2">Type</th>
               <th className="text-left px-3 py-2">Status</th>
-              <th className="text-left px-3 py-2">Pickup → Dropoff</th>
+              <th className="text-left px-3 py-2">Requester</th>
+              <th className="text-left px-3 py-2">Delivery Person</th>
+              <th className="text-left px-3 py-2">Recipient</th>
+              <th className="text-left px-3 py-2">Package</th>
+              <th className="text-left px-3 py-2">Route</th>
               <th className="text-right px-3 py-2">Revenue</th>
               <th className="text-left px-3 py-2">Created</th>
+              <th className="text-left px-3 py-2">Completed</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted">Loading…</td></tr>}
-            {!isLoading && !rows.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted">No deliveries in this period.</td></tr>}
+            {isLoading && <tr><td colSpan={11} className="px-3 py-6 text-center text-muted">Loading…</td></tr>}
+            {!isLoading && !rows.length && <tr><td colSpan={11} className="px-3 py-6 text-center text-muted">No deliveries in this period.</td></tr>}
             {rows.slice(0, 100).map((r) => (
               <tr key={r.id} className="border-t border-border">
-                <td className="px-3 py-2 font-mono text-xs text-muted">{r.id.slice(0, 8)}</td>
+                <td className="px-3 py-2 font-mono text-xs text-muted" title={r.id}>{r.id.slice(0, 8)}</td>
                 <td className="px-3 py-2 text-xs capitalize">{SERVICE_TYPE_LABEL[r.service_type] ?? r.service_type}</td>
                 <td className="px-3 py-2 text-xs">
                   <span className={`px-2 py-0.5 rounded-full ${DELIVERY_STATUS_COLOR[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
                     {r.status.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-xs text-ink truncate max-w-[200px]">
+                <td className="px-3 py-2 text-xs font-mono text-muted" title={r.requester_id}>{r.requester_id.slice(0, 8)}</td>
+                <td className="px-3 py-2 text-xs">
+                  {r.driver_id
+                    ? <span className="font-mono text-muted" title={r.driver_id}>{r.driver_id.slice(0, 8)}</span>
+                    : <span className="text-muted italic">Unassigned</span>}
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {r.recipient_name && <div className="font-medium text-ink">{r.recipient_name}</div>}
+                  {r.recipient_phone && <div className="text-muted">{r.recipient_phone}</div>}
+                  {!r.recipient_name && !r.recipient_phone && <span className="text-muted">—</span>}
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {r.package_type && <div className="capitalize">{r.package_type}</div>}
+                  {r.package_description && <div className="text-muted truncate max-w-[120px]" title={r.package_description}>{r.package_description}</div>}
+                  {r.is_fragile && <span className="text-orange-600 text-xs">⚠ Fragile</span>}
+                </td>
+                <td className="px-3 py-2 text-xs text-ink truncate max-w-[160px]">
                   {(r.pickup_address ?? '—').split(',')[0]} → {(r.dropoff_address ?? '—').split(',')[0]}
+                  {r.estimated_distance_km && <div className="text-muted">{r.estimated_distance_km} km · {r.estimated_duration_minutes} min</div>}
                 </td>
                 <td className="px-3 py-2 text-right text-xs text-success font-medium">
                   {r.status === 'delivered' ? fmtUsd(r.total_cents ?? r.fare_cents) : '—'}
@@ -372,11 +432,14 @@ function DeliveriesReport({ range }: { range: { start: string; end: string } }) 
                 <td className="px-3 py-2 text-xs text-muted whitespace-nowrap">
                   {new Date(r.created_at).toLocaleString()}
                 </td>
+                <td className="px-3 py-2 text-xs text-muted whitespace-nowrap">
+                  {r.delivered_at ? new Date(r.delivered_at).toLocaleString() : '—'}
+                </td>
               </tr>
             ))}
             {rows.length > 100 && (
               <tr className="border-t border-border">
-                <td colSpan={6} className="px-3 py-2 text-center text-xs text-muted">
+                <td colSpan={11} className="px-3 py-2 text-center text-xs text-muted">
                   Showing first 100 of {rows.length} deliveries. Export for full data.
                 </td>
               </tr>
@@ -394,6 +457,19 @@ function RevenueReport({ params, range }: { params: string; range: { start: stri
     queryKey: ['report-revenue', params],
     queryFn: () => api<any[]>(`/v1/admin/rides/reports/revenue?${params}`),
   });
+
+  // Delivery revenue for same date range
+  const { data: deliveryData } = useQuery({
+    queryKey: ['report-revenue-deliveries', range.start, range.end],
+    queryFn: () => api<{ items: any[]; total: number }>(`/v1/admin/deliveries?limit=500&page=1`),
+  });
+
+  // Marketplace revenue (all-time from the marketplace endpoint)
+  const { data: mpRevData } = useQuery({
+    queryKey: ['report-revenue-marketplace'],
+    queryFn: () => api<any>('/v1/admin/marketplace/revenue'),
+  });
+
   const rows = data ?? [];
   const subtitle = `${range.start.slice(0, 10)} to ${range.end.slice(0, 10)}`;
   const totals = useMemo(() => rows.reduce((acc, r) => ({
@@ -407,6 +483,17 @@ function RevenueReport({ params, range }: { params: string; range: { start: stri
     refunded: acc.refunded + Number(r.refunded_cents ?? 0),
     platformNet: acc.platformNet + Number(r.platform_net_cents ?? 0),
   }), { completed: 0, cancelled: 0, gross: 0, serviceFee: 0, bookingFee: 0, tips: 0, driverPayout: 0, refunded: 0, platformNet: 0 }), [rows]);
+
+  const deliveryRevCents = useMemo(() => {
+    const start = new Date(range.start).getTime();
+    const end = new Date(range.end).getTime();
+    return (deliveryData?.items ?? [])
+      .filter((d) => d.status === 'delivered' && new Date(d.created_at).getTime() >= start && new Date(d.created_at).getTime() <= end)
+      .reduce((s, d) => s + Number(d.total_cents ?? d.fare_cents ?? 0), 0);
+  }, [deliveryData, range]);
+
+  const mpRevCents = Number(mpRevData?.totals?.total_revenue_cents ?? 0);
+  const totalPlatformRevCents = totals.gross + deliveryRevCents + mpRevCents;
 
   const columns: ExportColumn<any>[] = [
     { header: 'Day', getValue: (r) => r.day },
@@ -423,6 +510,18 @@ function RevenueReport({ params, range }: { params: string; range: { start: stri
 
   return (
     <div>
+      {/* Cross-service revenue summary */}
+      <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 mb-4">
+        <div className="text-xs uppercase text-accent/70 font-medium tracking-wide mb-3">Total Platform Revenue — All Branches</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Kpi label="Total platform revenue" value={fmtUsd(totalPlatformRevCents)} accent="success" />
+          <Kpi label="Ride revenue (gross)" value={fmtUsd(totals.gross)} />
+          <Kpi label="Delivery revenue" value={fmtUsd(deliveryRevCents)} accent="accent" />
+          <Kpi label="Marketplace fees" value={fmtUsd(mpRevCents)} accent="accent" />
+        </div>
+      </div>
+
+      <div className="text-xs uppercase text-muted font-medium mb-2 mt-4">Ride Revenue Breakdown</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Kpi label="Completed rides" value={totals.completed} />
         <Kpi label="Gross fares" value={fmtUsd(totals.gross)} />
@@ -808,6 +907,180 @@ function OpsReport({ params, range }: { params: string; range: { start: string; 
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ MARKETPLACE ============
+const LISTING_TYPE_LABEL: Record<string, string> = {
+  standard: 'Standard', featured: 'Featured', sponsored: 'Sponsored', premium: 'Premium',
+};
+
+function MarketplaceReport({ range }: { range: { start: string; end: string } }) {
+  const { data: rev, isLoading } = useQuery({
+    queryKey: ['report-marketplace-revenue'],
+    queryFn: () => api<any>('/v1/admin/marketplace/revenue'),
+  });
+
+  const { data: listingsData } = useQuery({
+    queryKey: ['report-marketplace-listings'],
+    queryFn: () => api<any>('/v1/admin/listings?limit=500'),
+  });
+
+  const allListings = listingsData?.data ?? [];
+  const subtitle = `${range.start.slice(0, 10)} to ${range.end.slice(0, 10)}`;
+
+  const rows = useMemo(() => {
+    const start = new Date(range.start).getTime();
+    const end = new Date(range.end).getTime();
+    return allListings.filter((l: any) => {
+      const t = new Date(l.created_at).getTime();
+      return t >= start && t <= end;
+    });
+  }, [allListings, range.start, range.end]);
+
+  const totals = rev?.totals ?? {};
+  const byType = rev?.by_type ?? [];
+  const timeline = rev?.timeline ?? [];
+
+  const statusBreakdown = useMemo(() => {
+    const map: Record<string, number> = {};
+    rows.forEach((l: any) => { map[l.status] = (map[l.status] || 0) + 1; });
+    return Object.entries(map).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const exportCols: ExportColumn<any>[] = [
+    { header: 'ID', getValue: (r) => r.id },
+    { header: 'Title', getValue: (r) => r.title },
+    { header: 'Category', getValue: (r) => r.category ?? '' },
+    { header: 'Type', getValue: (r) => r.listing_type },
+    { header: 'Status', getValue: (r) => r.status },
+    { header: 'Listing Fee', getValue: (r) => fmtUsd(r.listing_fee_cents) },
+    { header: 'Fee Paid', getValue: (r) => r.listing_fee_paid ? 'Yes' : 'No' },
+    { header: 'Price', getValue: (r) => fmtUsd(r.price_cents) },
+    { header: 'Contact Email', getValue: (r) => r.contact_email ?? '' },
+    { header: 'Created', getValue: (r) => new Date(r.created_at).toLocaleString() },
+    { header: 'Approved', getValue: (r) => r.approved_at ? new Date(r.approved_at).toLocaleString() : '' },
+    { header: 'Expires', getValue: (r) => r.expires_at ? new Date(r.expires_at).toLocaleString() : '' },
+    { header: 'Rejection Reason', getValue: (r) => r.rejection_reason ?? '' },
+  ];
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <Kpi label="Total listing fee revenue" value={fmtUsd(totals.total_revenue_cents)} accent="success" />
+        <Kpi label="Paid listings" value={totals.total_paid_listings ?? 0} />
+        <Kpi label="Active listings" value={totals.active_listings ?? 0} accent="accent" />
+        <Kpi label="Pending review" value={totals.pending_listings ?? 0} />
+        <Kpi label="Listings this period" value={rows.length} />
+        <Kpi label="Approved" value={rows.filter((l: any) => l.status === 'approved').length} accent="success" />
+        <Kpi label="Rejected" value={rows.filter((l: any) => l.status === 'rejected').length} accent="danger" />
+        <Kpi label="Approval rate" value={rows.length ? `${((rows.filter((l: any) => l.status === 'approved').length / rows.length) * 100).toFixed(1)}%` : '—'} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {byType.length > 0 && (
+          <ChartCard title="Revenue by listing type">
+            <BarChart data={byType.map((b: any) => ({ name: LISTING_TYPE_LABEL[b.listing_type] ?? b.listing_type, revenue: Number(b.total_fee_cents) / 100, count: Number(b.paid_count) }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
+              <Tooltip formatter={(v: any, name: string) => name === 'revenue' ? `$${Number(v).toFixed(2)}` : v} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="revenue" name="Revenue ($)" fill={CHART_COLORS[2]} />
+              <Bar dataKey="count" name="Paid listings" fill={CHART_COLORS[0]} />
+            </BarChart>
+          </ChartCard>
+        )}
+        {timeline.length > 0 && (
+          <ChartCard title="Daily listing fee revenue">
+            <LineChart data={[...timeline].reverse().map((t: any) => ({ day: (t.day as string).slice(5), revenue: Number(t.revenue_cents) / 100 }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
+              <Tooltip formatter={(v: any) => `$${Number(v).toFixed(2)}`} />
+              <Line type="monotone" dataKey="revenue" name="Revenue" stroke={CHART_COLORS[2]} strokeWidth={2} dot={false} />
+            </LineChart>
+          </ChartCard>
+        )}
+      </div>
+
+      {statusBreakdown.length > 0 && (
+        <div className="bg-white border border-border rounded p-4 mb-4">
+          <div className="text-xs uppercase text-muted mb-3">Status breakdown — this period</div>
+          <div className="space-y-2">
+            {statusBreakdown.map(({ status, count }) => {
+              const pct = rows.length ? (count / rows.length) * 100 : 0;
+              const color = status === 'approved' ? 'bg-success' : status === 'rejected' ? 'bg-danger' : status === 'pending' ? 'bg-yellow-400' : 'bg-accent';
+              return (
+                <div key={status}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="capitalize text-ink">{status}</span>
+                    <span className="text-muted">{count} · {pct.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-1.5 bg-surface rounded-full overflow-hidden">
+                    <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end mb-2">
+        <ExportMenu rows={rows} filename={`marketplace-${range.start.slice(0,10)}-${range.end.slice(0,10)}`} columns={exportCols} title="Marketplace Listings Report" subtitle={subtitle} />
+      </div>
+
+      <div className="bg-white border border-border rounded overflow-x-auto">
+        <table className="w-full text-sm min-w-[800px]">
+          <thead className="bg-surface text-muted text-xs uppercase">
+            <tr>
+              <th className="text-left px-3 py-2">Title</th>
+              <th className="text-left px-3 py-2">Category</th>
+              <th className="text-left px-3 py-2">Type</th>
+              <th className="text-left px-3 py-2">Status</th>
+              <th className="text-right px-3 py-2">Listing Fee</th>
+              <th className="text-left px-3 py-2">Fee Paid</th>
+              <th className="text-right px-3 py-2">Price</th>
+              <th className="text-left px-3 py-2">Contact</th>
+              <th className="text-left px-3 py-2">Created</th>
+              <th className="text-left px-3 py-2">Approved</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">Loading…</td></tr>}
+            {!isLoading && !rows.length && <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">No listings in this period.</td></tr>}
+            {rows.slice(0, 100).map((r: any) => (
+              <tr key={r.id} className="border-t border-border">
+                <td className="px-3 py-2 text-xs font-medium text-ink truncate max-w-[180px]" title={r.title}>{r.title}</td>
+                <td className="px-3 py-2 text-xs capitalize text-muted">{r.category ?? '—'}</td>
+                <td className="px-3 py-2 text-xs">
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${r.listing_type === 'premium' ? 'bg-purple-100 text-purple-800' : r.listing_type === 'sponsored' ? 'bg-yellow-100 text-yellow-800' : r.listing_type === 'featured' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
+                    {LISTING_TYPE_LABEL[r.listing_type] ?? r.listing_type}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${r.status === 'approved' ? 'bg-green-100 text-green-800' : r.status === 'rejected' ? 'bg-red-100 text-red-800' : r.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right text-xs">{fmtUsd(r.listing_fee_cents)}</td>
+                <td className="px-3 py-2 text-xs">{r.listing_fee_paid ? <span className="text-success font-medium">✓ Paid</span> : <span className="text-muted">—</span>}</td>
+                <td className="px-3 py-2 text-right text-xs">{fmtUsd(r.price_cents)}</td>
+                <td className="px-3 py-2 text-xs text-muted truncate max-w-[140px]">{r.contact_email ?? '—'}</td>
+                <td className="px-3 py-2 text-xs text-muted whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
+                <td className="px-3 py-2 text-xs text-muted whitespace-nowrap">{r.approved_at ? new Date(r.approved_at).toLocaleString() : '—'}</td>
+              </tr>
+            ))}
+            {rows.length > 100 && (
+              <tr className="border-t border-border">
+                <td colSpan={10} className="px-3 py-2 text-center text-xs text-muted">Showing 100 of {rows.length}. Export for full data.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
