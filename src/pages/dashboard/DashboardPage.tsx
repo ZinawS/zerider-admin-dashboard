@@ -18,34 +18,37 @@ interface ActionItem {
 
 function PendingActionsPanel() {
   const nav = useNavigate();
+  const regionCode = useRegionScope((st) => st.regionCode);
+  const r = regionCode ? `?region=${regionCode}` : '';
+  const rAmp = regionCode ? `&region=${regionCode}` : '';
 
   const { data: marketplaceRev } = useQuery({
-    queryKey: ['pa-marketplace'],
-    queryFn: () => api<{ totals: { pending_listings: number | null } }>('/v1/admin/marketplace/revenue'),
+    queryKey: ['pa-marketplace', regionCode],
+    queryFn: () => api<{ totals: { pending_listings: number | null } }>(`/v1/admin/marketplace/revenue${r}`),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
   const { data: marketplaceListings } = useQuery({
-    queryKey: ['pa-listings-info-required'],
-    queryFn: () => api<{ total: number }>('/v1/admin/listings?status=information_required&limit=1'),
+    queryKey: ['pa-listings-info-required', regionCode],
+    queryFn: () => api<{ total: number }>(`/v1/admin/listings?status=information_required&limit=1${rAmp}`),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
   const { data: listingReports } = useQuery({
-    queryKey: ['pa-listing-reports'],
-    queryFn: () => api<{ total: number } | any[]>('/v1/admin/listings/reports'),
+    queryKey: ['pa-listing-reports', regionCode],
+    queryFn: () => api<{ total: number } | any[]>(`/v1/admin/listings/reports${r}`),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
   const { data: riderTickets } = useQuery({
-    queryKey: ['pa-rider-tickets'],
-    queryFn: () => api<{ tickets: any[]; total?: number }>('/v1/admin/rider-support/tickets?status=open&limit=1'),
+    queryKey: ['pa-rider-tickets', regionCode],
+    queryFn: () => api<{ tickets: any[]; total?: number }>(`/v1/admin/rider-support/tickets?status=open&limit=1${rAmp}`),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
   const { data: driverTickets } = useQuery({
-    queryKey: ['pa-driver-tickets'],
-    queryFn: () => api<{ tickets: any[]; total?: number }>('/v1/admin/driver-support/tickets?status=open&limit=1'),
+    queryKey: ['pa-driver-tickets', regionCode],
+    queryFn: () => api<{ tickets: any[]; total?: number }>(`/v1/admin/driver-support/tickets?status=open&limit=1${rAmp}`),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
