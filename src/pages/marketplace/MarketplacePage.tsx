@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
+import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Pagination } from '../../components/Pagination.js';
 import { useDebounced } from '../../hooks/useDebounced.js';
@@ -543,10 +544,11 @@ function KpiCard({ label, value, accent }: { label: string; value: string | numb
   );
 }
 
-function RevenueTab() {
+function RevenueTab({ regionCode }: { regionCode: string | null }) {
+  const qs = regionCode ? `?region=${regionCode}` : '';
   const { data, isLoading } = useQuery({
-    queryKey: ['marketplace-revenue'],
-    queryFn: () => api<RevenueSummary>('/v1/admin/marketplace/revenue'),
+    queryKey: ['marketplace-revenue', regionCode],
+    queryFn: () => api<RevenueSummary>(`/v1/admin/marketplace/revenue${qs}`),
     refetchInterval: 60_000,
   });
 
@@ -631,7 +633,7 @@ function RevenueTab() {
 // Listings tab
 // ---------------------------------------------------------------------------
 
-function ListingsTab() {
+function ListingsTab({ regionCode }: { regionCode: string | null }) {
   const [status,      setStatus]      = useState('');
   const [type,        setType]        = useState('');
   const [search,      setSearch]      = useState('');
@@ -647,12 +649,13 @@ function ListingsTab() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-marketplace-listings', status, type, debounced, page],
+    queryKey: ['admin-marketplace-listings', status, type, debounced, page, regionCode],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      if (status)    params.set('status', status);
-      if (type)      params.set('type', type);
-      if (debounced) params.set('q', debounced);
+      if (status)      params.set('status', status);
+      if (type)        params.set('type', type);
+      if (debounced)   params.set('q', debounced);
+      if (regionCode)  params.set('region', regionCode);
       return api<ListingsResponse>(`/v1/admin/listings?${params.toString()}`);
     },
   });
@@ -803,14 +806,15 @@ function ListingsTab() {
 // Reports tab
 // ---------------------------------------------------------------------------
 
-function ReportsTab() {
+function ReportsTab({ regionCode }: { regionCode: string | null }) {
   const [page, setPage] = useState(1);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-marketplace-reports', page],
+    queryKey: ['admin-marketplace-reports', page, regionCode],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (regionCode) params.set('region', regionCode);
       return api<ReportsResponse>(`/v1/admin/listings/reports?${params.toString()}`);
     },
   });
@@ -886,10 +890,11 @@ function ReportsTab() {
 // Revenue banner (always visible at top)
 // ---------------------------------------------------------------------------
 
-function RevenueBanner() {
+function RevenueBanner({ regionCode }: { regionCode: string | null }) {
+  const qs = regionCode ? `?region=${regionCode}` : '';
   const { data } = useQuery({
-    queryKey: ['marketplace-revenue'],
-    queryFn: () => api<RevenueSummary>('/v1/admin/marketplace/revenue'),
+    queryKey: ['marketplace-revenue', regionCode],
+    queryFn: () => api<RevenueSummary>(`/v1/admin/marketplace/revenue${qs}`),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -924,12 +929,13 @@ type Tab = 'listings' | 'revenue' | 'reports';
 
 export function MarketplacePage(): JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('listings');
+  const regionCode = useRegionScope((s) => s.regionCode);
 
   return (
     <>
       <PageHeader title="Marketplace" subtitle="Moderate listings, manage fees, and track ad revenue." />
 
-      <RevenueBanner />
+      <RevenueBanner regionCode={regionCode} />
 
       <div className="flex gap-1 border-b border-border mb-4">
         {(['listings', 'revenue', 'reports'] as const).map((tab) => (
@@ -947,9 +953,9 @@ export function MarketplacePage(): JSX.Element {
         ))}
       </div>
 
-      {activeTab === 'listings' && <ListingsTab />}
-      {activeTab === 'revenue'  && <RevenueTab />}
-      {activeTab === 'reports'  && <ReportsTab />}
+      {activeTab === 'listings' && <ListingsTab regionCode={regionCode} />}
+      {activeTab === 'revenue'  && <RevenueTab regionCode={regionCode} />}
+      {activeTab === 'reports'  && <ReportsTab regionCode={regionCode} />}
     </>
   );
 }

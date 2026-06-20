@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
+import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 
 type ChallengeType = 'trips_completed' | 'earnings_cents' | 'avg_rating';
@@ -51,11 +52,13 @@ export function GamificationPage(): JSX.Element {
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const qc = useQueryClient();
+  const regionCode = useRegionScope((s) => s.regionCode);
+  const rqs = regionCode ? `?region=${regionCode}` : '';
 
   const { data: challenges = [], isLoading: cLoading, isError: cError } = useQuery<Challenge[]>({
-    queryKey: ['driver-challenges'],
+    queryKey: ['driver-challenges', regionCode],
     queryFn: () =>
-      api<{ items: Challenge[] } | Challenge[]>('/v1/admin/gamification/challenges').then((r) =>
+      api<{ items: Challenge[] } | Challenge[]>(`/v1/admin/gamification/challenges${rqs}`).then((r) =>
         Array.isArray(r) ? r : (r.items ?? []),
       ),
     enabled: tab === 'challenges',
@@ -63,8 +66,8 @@ export function GamificationPage(): JSX.Element {
   });
 
   const { data: leaderboard = [], isLoading: lLoading, isError: lError } = useQuery<LeaderboardEntry[]>({
-    queryKey: ['driver-leaderboard'],
-    queryFn: () => api('/v1/admin/gamification/leaderboard'),
+    queryKey: ['driver-leaderboard', regionCode],
+    queryFn: () => api(`/v1/admin/gamification/leaderboard${rqs}`),
     enabled: tab === 'leaderboard',
     retry: false,
   });

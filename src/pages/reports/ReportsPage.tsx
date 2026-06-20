@@ -460,14 +460,14 @@ function RevenueReport({ params, range }: { params: string; range: { start: stri
 
   // Delivery revenue for same date range
   const { data: deliveryData } = useQuery({
-    queryKey: ['report-revenue-deliveries', range.start, range.end],
-    queryFn: () => api<{ items: any[]; total: number }>(`/v1/admin/deliveries?limit=500&page=1`),
+    queryKey: ['report-revenue-deliveries', params],
+    queryFn: () => api<{ items: any[]; total: number }>(`/v1/admin/deliveries?limit=500&page=1&${params}`),
   });
 
-  // Marketplace revenue (all-time from the marketplace endpoint)
+  // Marketplace revenue scoped to same date range and region
   const { data: mpRevData } = useQuery({
-    queryKey: ['report-revenue-marketplace'],
-    queryFn: () => api<any>('/v1/admin/marketplace/revenue'),
+    queryKey: ['report-revenue-marketplace', params],
+    queryFn: () => api<any>(`/v1/admin/marketplace/revenue?${params}`),
   });
 
   const rows = data ?? [];

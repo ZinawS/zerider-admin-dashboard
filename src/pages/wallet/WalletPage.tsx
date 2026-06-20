@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { useRegionScope } from '../../stores/region-scope.store';
 import { PageHeader } from '../../components/PageHeader';
 import { Pagination } from '../../components/Pagination';
 import { DateRangeFilter } from '../../components/DateRangeFilter';
@@ -113,6 +114,7 @@ export function WalletPage(): JSX.Element {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
+  const regionCode = useRegionScope((s) => s.regionCode);
 
   const direction = activeTab === 'all' ? '' : activeTab;
 
@@ -123,15 +125,17 @@ export function WalletPage(): JSX.Element {
     if (userId.trim())    p.userId       = userId.trim();
     if (dateFrom)         p.dateFrom     = dateFrom;
     if (dateTo)           p.dateTo       = dateTo;
+    if (regionCode)       p.region       = regionCode;
     return new URLSearchParams(p).toString();
-  }, [direction, serviceType, userId, dateFrom, dateTo, page]);
+  }, [direction, serviceType, userId, dateFrom, dateTo, page, regionCode]);
 
   const summaryParams = useMemo(() => {
     const p: Record<string, string> = {};
-    if (dateFrom) p.dateFrom = dateFrom;
-    if (dateTo)   p.dateTo   = dateTo;
+    if (dateFrom)   p.dateFrom = dateFrom;
+    if (dateTo)     p.dateTo   = dateTo;
+    if (regionCode) p.region   = regionCode;
     return new URLSearchParams(p).toString();
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, regionCode]);
 
   const { data, isLoading } = useQuery<LedgerResponse>({
     queryKey: ['wallet-ledger', params],

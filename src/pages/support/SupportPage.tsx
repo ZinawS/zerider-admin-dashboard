@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
+import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 
 // ---------------------------------------------------------------------------
@@ -342,21 +343,23 @@ function DetailPanel({ ticketId, source, onClose, onUpdated }: DetailPanelProps)
 
 interface TicketsTabProps {
   source: Source;
+  regionCode: string | null;
 }
 
-function TicketsTab({ source }: TicketsTabProps) {
+function TicketsTab({ source, regionCode }: TicketsTabProps) {
   const [statusFilter, setStatusFilter] = useState<TicketStatus | ''>('');
   const [search,       setSearch]       = useState('');
   const [selectedId,   setSelectedId]   = useState<string | null>(null);
   const qc = useQueryClient();
 
-  const queryKey = ['support-tickets', source, statusFilter];
+  const queryKey = ['support-tickets', source, statusFilter, regionCode];
 
   const { data, isLoading } = useQuery({
     queryKey,
     queryFn: () => {
       const params = new URLSearchParams({ limit: '100', offset: '0' });
       if (statusFilter) params.set('status', statusFilter);
+      if (regionCode)   params.set('region', regionCode);
       return api<TicketsResponse>(`/v1/admin/${source}-support/tickets?${params.toString()}`);
     },
   });
@@ -492,18 +495,20 @@ type Tab = 'riders' | 'drivers';
 
 export function SupportPage(): JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('riders');
+  const regionCode = useRegionScope((s) => s.regionCode);
+  const rqs = regionCode ? `&region=${regionCode}` : '';
 
   // Fetch both so KPI row has data
   const { data: riderData, isLoading: riderLoading } = useQuery({
-    queryKey: ['support-tickets', 'rider', ''],
+    queryKey: ['support-tickets', 'rider', '', regionCode],
     queryFn: () =>
-      api<TicketsResponse>('/v1/admin/rider-support/tickets?limit=100&offset=0'),
+      api<TicketsResponse>(`/v1/admin/rider-support/tickets?limit=100&offset=0${rqs}`),
     staleTime: 30_000,
   });
   const { data: driverData, isLoading: driverLoading } = useQuery({
-    queryKey: ['support-tickets', 'driver', ''],
+    queryKey: ['support-tickets', 'driver', '', regionCode],
     queryFn: () =>
-      api<TicketsResponse>('/v1/admin/driver-support/tickets?limit=100&offset=0'),
+      api<TicketsResponse>(`/v1/admin/driver-support/tickets?limit=100&offset=0${rqs}`),
     staleTime: 30_000,
   });
 
@@ -538,8 +543,8 @@ export function SupportPage(): JSX.Element {
         ))}
       </div>
 
-      {activeTab === 'riders'  && <TicketsTab source="rider" />}
-      {activeTab === 'drivers' && <TicketsTab source="driver" />}
+      {activeTab === 'riders'  && <TicketsTab source="rider"  regionCode={regionCode} />}
+      {activeTab === 'drivers' && <TicketsTab source="driver" regionCode={regionCode} />}
     </>
   );
 }
