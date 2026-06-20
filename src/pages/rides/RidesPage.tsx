@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useRegionScope } from '../../stores/region-scope.store.js';
+import { useToast } from '../../components/Toast.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { DateRangeFilter } from '../../components/DateRangeFilter.js';
 import { Pagination } from '../../components/Pagination.js';
@@ -397,6 +398,7 @@ function AddressAutocomplete({ label, required, value, onSelect }: {
 }
 
 function ManualDispatchModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const { toast } = useToast();
   const [riderQuery, setRiderQuery] = useState('');
   const [riderId, setRiderId] = useState('');
   const [pickup, setPickup] = useState({ address: '', lat: '', lng: '' });
@@ -464,7 +466,7 @@ function ManualDispatchModal({ onClose, onCreated }: { onClose: () => void; onCr
       return api<{ id: string }>(`/v1/admin/rides/manual-dispatch`, { method: 'POST', body });
     },
     onSuccess: (r) => onCreated(r.id),
-    onError: (e: any) => alert('Dispatch failed: ' + (e?.message ?? 'unknown error')),
+    onError: (e: any) => toast('Dispatch failed: ' + (e?.message ?? 'unknown error'), 'error'),
   });
 
   const missing: string[] = [];

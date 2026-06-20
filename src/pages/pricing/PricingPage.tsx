@@ -67,6 +67,8 @@ export function PricingPage(): JSX.Element {
 
   const [showPromoForm, setShowPromoForm] = useState(false);
   const [promoForm, setPromoForm] = useState(EMPTY_PROMO);
+  const [promoConfirmId, setPromoConfirmId] = useState<string | null>(null);
+  const [ruleConfirmId, setRuleConfirmId] = useState<string | null>(null);
 
   const createPromoMutation = useMutation({
     mutationFn: (data: typeof EMPTY_PROMO) => api('/v1/admin/pricing/promotions', {
@@ -121,9 +123,15 @@ export function PricingPage(): JSX.Element {
     },
     {
       key: 'actions', header: '',
-      render: (p) => (
+      render: (p) => promoConfirmId === p.id ? (
+        <span className="flex items-center gap-1">
+          <span className="text-xs text-danger">Sure?</span>
+          <button onClick={() => { setPromoConfirmId(null); deletePromoMutation.mutate(p.id); }} className="text-xs px-1.5 py-0.5 bg-danger text-white rounded">Yes</button>
+          <button onClick={() => setPromoConfirmId(null)} className="text-xs px-1.5 py-0.5 border border-border rounded">No</button>
+        </span>
+      ) : (
         <button
-          onClick={() => { if (confirm(`Deactivate code ${p.code}?`)) deletePromoMutation.mutate(p.id); }}
+          onClick={() => setPromoConfirmId(p.id)}
           className="text-xs text-danger hover:underline disabled:opacity-40"
           disabled={deletePromoMutation.isPending}
         >
@@ -246,12 +254,17 @@ export function PricingPage(): JSX.Element {
     {
       key: 'actions', header: 'Actions',
       render: (r) => (
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <button onClick={() => startEdit(r)} className="px-2 py-1 text-xs bg-accent text-white rounded">Edit</button>
-          <button
-            onClick={() => { if (confirm(`Delete ${r.city_code} ${r.vehicle_category} rule?`)) deleteRule.mutate(r.id); }}
-            className="px-2 py-1 text-xs bg-danger text-white rounded"
-          >Delete</button>
+          {ruleConfirmId === r.id ? (
+            <span className="flex items-center gap-1">
+              <span className="text-xs text-danger">Sure?</span>
+              <button onClick={() => { setRuleConfirmId(null); deleteRule.mutate(r.id); }} className="text-xs px-1.5 py-0.5 bg-danger text-white rounded">Yes</button>
+              <button onClick={() => setRuleConfirmId(null)} className="text-xs px-1.5 py-0.5 border border-border rounded">No</button>
+            </span>
+          ) : (
+            <button onClick={() => setRuleConfirmId(r.id)} className="px-2 py-1 text-xs bg-danger text-white rounded">Delete</button>
+          )}
         </div>
       ),
     },

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { useToast } from '../../components/Toast';
 
 interface RideDetail {
   id: string;
@@ -46,6 +48,253 @@ function fmtTime(s: string | null) { return s ? new Date(s).toLocaleString() : '
 
 const SET_STATUSES = ['requested', 'accepted', 'arrived', 'in_progress', 'completed', 'cancelled_by_rider', 'cancelled_by_driver', 'no_drivers_available'];
 
+// ── Shared modal shell ───────────────────────────────────────────────────────
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-base font-semibold">{title}</div>
+          <button onClick={onClose} className="text-muted hover:text-ink text-lg leading-none">×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs text-muted mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const inputCls = 'w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm';
+const btnPrimary = 'px-4 py-2 text-sm bg-accent text-white rounded disabled:opacity-40';
+const btnDanger = 'px-4 py-2 text-sm bg-danger text-white rounded disabled:opacity-40';
+const btnCancel = 'px-4 py-2 text-sm border border-border rounded text-ink';
+
+// ── Action modals ────────────────────────────────────────────────────────────
+
+function CancelModal({ rideId, onClose, onDone }: { rideId: string; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('');
+  const { toast } = useToast();
+  const mut = useMutation({
+    mutationFn: () => api(`/v1/admin/rides/${rideId}/cancel`, { method: 'POST', body: { reason } }),
+    onSuccess: () => { toast('Ride cancelled.', 'success'); onDone(); onClose(); },
+    onError: (e: any) => toast('Cancel failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+  return (
+    <Modal title="Force cancel ride" onClose={onClose}>
+      <Field label="Cancellation reason *">
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} placeholder="e.g. Driver no-show confirmed" autoFocus />
+      </Field>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className={btnCancel}>Back</button>
+        <button onClick={() => mut.mutate()} disabled={!reason.trim() || mut.isPending} className={btnDanger}>
+          {mut.isPending ? 'Cancelling…' : 'Force cancel'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ReassignModal({ rideId, onClose, onDone }: { rideId: string; onClose: () => void; onDone: () => void }) {
+  const [driverId, setDriverId] = useState('');
+  const { toast } = useToast();
+  const mut = useMutation({
+    mutationFn: () => api(`/v1/admin/rides/${rideId}/reassign`, { method: 'POST', body: { driverId } }),
+    onSuccess: () => { toast('Driver reassigned.', 'success'); onDone(); onClose(); },
+    onError: (e: any) => toast('Reassign failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+  return (
+    <Modal title="Reassign driver" onClose={onClose}>
+      <Field label="New driver UUID *">
+        <input type="text" value={driverId} onChange={(e) => setDriverId(e.target.value)} className={inputCls} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autoFocus />
+      </Field>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className={btnCancel}>Back</button>
+        <button onClick={() => mut.mutate()} disabled={!driverId.trim() || mut.isPending} className={btnPrimary}>
+          {mut.isPending ? 'Reassigning…' : 'Reassign'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function AdjustFareModal({ rideId, currentFare, onClose, onDone }: { rideId: string; currentFare: number | null; onClose: () => void; onDone: () => void }) {
+  const [dollars, setDollars] = useState('');
+  const [reason, setReason] = useState('');
+  const { toast } = useToast();
+  const amount = Math.round(parseFloat(dollars) * 100);
+  const valid = !Number.isNaN(amount) && dollars.trim() !== '' && reason.trim() !== '';
+  const mut = useMutation({
+    mutationFn: () => api(`/v1/admin/rides/${rideId}/adjust-fare`, { method: 'POST', body: { amount, reason } }),
+    onSuccess: () => { toast('Fare adjusted.', 'success'); onDone(); onClose(); },
+    onError: (e: any) => toast('Adjustment failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+  return (
+    <Modal title="Adjust fare" onClose={onClose}>
+      {currentFare != null && <p className="text-xs text-muted mb-3">Current fare: <strong>{fmtUsd(currentFare)}</strong></p>}
+      <Field label="Adjustment in USD (negative to decrease) *">
+        <input type="number" step="0.01" value={dollars} onChange={(e) => setDollars(e.target.value)} className={inputCls} placeholder="-5.00" autoFocus />
+      </Field>
+      <Field label="Reason *">
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} placeholder="e.g. Driver took longer route" />
+      </Field>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className={btnCancel}>Back</button>
+        <button onClick={() => mut.mutate()} disabled={!valid || mut.isPending} className={btnPrimary}>
+          {mut.isPending ? 'Saving…' : 'Apply adjustment'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function EndRideModal({ rideId, onClose, onDone }: { rideId: string; onClose: () => void; onDone: () => void }) {
+  const { toast } = useToast();
+  const mut = useMutation({
+    mutationFn: () => api(`/v1/admin/rides/${rideId}/end`, { method: 'POST' }),
+    onSuccess: () => { toast('Ride marked as completed.', 'success'); onDone(); onClose(); },
+    onError: (e: any) => toast('Failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+  return (
+    <Modal title="End ride" onClose={onClose}>
+      <p className="text-sm text-ink mb-4">Are you sure you want to force-complete this ride? The driver will be paid out at the current fare estimate.</p>
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className={btnCancel}>Back</button>
+        <button onClick={() => mut.mutate()} disabled={mut.isPending} className="px-4 py-2 text-sm bg-success text-white rounded disabled:opacity-40">
+          {mut.isPending ? 'Ending…' : 'Confirm end ride'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function RefundModal({ rideId, fareTotal, onClose, onDone }: { rideId: string; fareTotal: number | null; onClose: () => void; onDone: () => void }) {
+  const [fullRefund, setFullRefund] = useState(true);
+  const [dollars, setDollars] = useState('');
+  const [reason, setReason] = useState('');
+  const { toast } = useToast();
+  const amount = fullRefund ? undefined : Math.round(parseFloat(dollars) * 100);
+  const validAmount = fullRefund || (!Number.isNaN(amount!) && dollars.trim() !== '');
+  const valid = validAmount && reason.trim() !== '';
+  const mut = useMutation({
+    mutationFn: () => api(`/v1/admin/payments/${rideId}/refund`, { method: 'POST', body: { amount, reason } }),
+    onSuccess: () => { toast('Refund processed.', 'success'); onDone(); onClose(); },
+    onError: (e: any) => toast('Refund failed: ' + (e?.message ?? 'unknown error'), 'error'),
+  });
+  return (
+    <Modal title="Issue refund" onClose={onClose}>
+      {fareTotal != null && <p className="text-xs text-muted mb-3">Paid fare: <strong>{fmtUsd(fareTotal)}</strong></p>}
+      <Field label="Refund type">
+        <div className="flex gap-4 text-sm">
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" checked={fullRefund} onChange={() => setFullRefund(true)} /> Full refund
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" checked={!fullRefund} onChange={() => setFullRefund(false)} /> Partial amount
+          </label>
+        </div>
+      </Field>
+      {!fullRefund && (
+        <Field label="Refund amount (USD) *">
+          <input type="number" step="0.01" min="0.01" value={dollars} onChange={(e) => setDollars(e.target.value)} className={inputCls} placeholder="5.00" autoFocus />
+        </Field>
+      )}
+      <Field label="Reason *">
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} placeholder="e.g. Rider complained about route" />
+      </Field>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className={btnCancel}>Back</button>
+        <button onClick={() => mut.mutate()} disabled={!valid || mut.isPending} className={btnDanger}>
+          {mut.isPending ? 'Processing…' : 'Issue refund'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function SetStatusModal({ rideId, currentStatus, onClose, onDone }: { rideId: string; currentStatus: string; onClose: () => void; onDone: () => void }) {
+  const [status, setStatus] = useState('');
+  const [reason, setReason] = useState('');
+  const { toast } = useToast();
+  const mut = useMutation({
+    mutationFn: () => api(`/v1/admin/rides/${rideId}/set-status`, { method: 'POST', body: { status, reason: reason || undefined } }),
+    onSuccess: () => { toast(`Status set to ${status}.`, 'success'); onDone(); onClose(); },
+    onError: (e: any) => toast('Failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+  return (
+    <Modal title="Override ride status" onClose={onClose}>
+      <p className="text-xs text-muted mb-3">Current: <strong>{currentStatus.replace(/_/g, ' ')}</strong></p>
+      <Field label="New status *">
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+          <option value="">Select status…</option>
+          {SET_STATUSES.filter((s) => s !== currentStatus).map((s) => (
+            <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Reason (optional)">
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} placeholder="e.g. Data correction" />
+      </Field>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className={btnCancel}>Back</button>
+        <button onClick={() => mut.mutate()} disabled={!status || mut.isPending} className={btnPrimary}>
+          {mut.isPending ? 'Saving…' : 'Set status'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Action bar ───────────────────────────────────────────────────────────────
+
+type ActiveModal = 'cancel' | 'reassign' | 'adjustFare' | 'endRide' | 'refund' | 'setStatus' | null;
+
+function ActionBar({ rideId, currentStatus, currentFare, isActive, onDone }: {
+  rideId: string;
+  currentStatus: string;
+  currentFare: number | null;
+  isActive: boolean;
+  onDone: () => void;
+}) {
+  const [modal, setModal] = useState<ActiveModal>(null);
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <button disabled={!isActive} onClick={() => setModal('cancel')}
+          className="px-3 py-1.5 text-sm bg-danger text-white rounded disabled:opacity-30">Force cancel</button>
+        <button disabled={!isActive} onClick={() => setModal('reassign')}
+          className="px-3 py-1.5 text-sm bg-accent text-white rounded disabled:opacity-30">Reassign driver</button>
+        <button onClick={() => setModal('adjustFare')}
+          className="px-3 py-1.5 text-sm bg-white border border-border text-ink rounded">Adjust fare</button>
+        <button disabled={!isActive} onClick={() => setModal('endRide')}
+          className="px-3 py-1.5 text-sm bg-success text-white rounded disabled:opacity-30">End ride</button>
+        <button onClick={() => setModal('refund')}
+          className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded">Refund</button>
+        <button onClick={() => setModal('setStatus')}
+          className="px-3 py-1.5 text-sm bg-white border border-border text-ink rounded">Set status…</button>
+      </div>
+
+      {modal === 'cancel'     && <CancelModal      rideId={rideId} onClose={() => setModal(null)} onDone={onDone} />}
+      {modal === 'reassign'   && <ReassignModal    rideId={rideId} onClose={() => setModal(null)} onDone={onDone} />}
+      {modal === 'adjustFare' && <AdjustFareModal  rideId={rideId} currentFare={currentFare} onClose={() => setModal(null)} onDone={onDone} />}
+      {modal === 'endRide'    && <EndRideModal     rideId={rideId} onClose={() => setModal(null)} onDone={onDone} />}
+      {modal === 'refund'     && <RefundModal      rideId={rideId} fareTotal={currentFare} onClose={() => setModal(null)} onDone={onDone} />}
+      {modal === 'setStatus'  && <SetStatusModal   rideId={rideId} currentStatus={currentStatus} onClose={() => setModal(null)} onDone={onDone} />}
+    </>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
+
 export function RideDetailPage(): JSX.Element {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -74,44 +323,13 @@ export function RideDetailPage(): JSX.Element {
     qc.invalidateQueries({ queryKey: ['admin-rides'] });
   };
 
-  const forceCancel = useMutation({
-    mutationFn: (reason: string) => api(`/v1/admin/rides/${id}/cancel`, { method: 'POST', body: { reason } }),
-    onSuccess: invalidate,
-  });
-  const reassign = useMutation({
-    mutationFn: (driverId: string) => api(`/v1/admin/rides/${id}/reassign`, { method: 'POST', body: { driverId } }),
-    onSuccess: invalidate,
-  });
-  const adjustFare = useMutation({
-    mutationFn: ({ amount, reason }: { amount: number; reason: string }) =>
-      api(`/v1/admin/rides/${id}/adjust-fare`, { method: 'POST', body: { amount, reason } }),
-    onSuccess: invalidate,
-  });
-  const endRide = useMutation({
-    mutationFn: () => api(`/v1/admin/rides/${id}/end`, { method: 'POST' }),
-    onSuccess: invalidate,
-  });
-  const setStatus = useMutation({
-    mutationFn: ({ status, reason }: { status: string; reason?: string }) =>
-      api(`/v1/admin/rides/${id}/set-status`, { method: 'POST', body: { status, reason } }),
-    onSuccess: invalidate,
-  });
-  const refund = useMutation({
-    mutationFn: ({ amount, reason }: { amount?: number; reason: string }) =>
-      api(`/v1/admin/payments/${id}/refund`, { method: 'POST', body: { amount, reason } }),
-    onSuccess: () => {
-      invalidate();
-      alert('Refund processed');
-    },
-    onError: (e: any) => alert('Refund failed: ' + (e?.message ?? 'unknown error')),
-  });
-
   if (isLoading) return <div className="text-muted">Loading…</div>;
   if (!ride) return <div className="text-danger">Ride not found.</div>;
 
   const isActive = ['requested', 'accepted', 'arrived', 'in_progress'].includes(ride.status);
   const riderName = rider ? ([rider.rider?.first_name || rider.driver?.first_name, rider.rider?.last_name || rider.driver?.last_name].filter(Boolean).join(' ') || '(unnamed)') : '—';
   const driverName = driver ? ([driver.driver?.first_name, driver.driver?.last_name].filter(Boolean).join(' ') || '(unnamed)') : '—';
+  const currentFare = ride.fare_final_cents != null ? Number(ride.fare_final_cents) : ride.fare_estimate_cents != null ? Number(ride.fare_estimate_cents) : null;
 
   return (
     <div>
@@ -237,14 +455,11 @@ export function RideDetailPage(): JSX.Element {
       <div className="bg-white border border-border rounded p-4 mb-4">
         <div className="text-xs uppercase text-muted mb-3">Admin Actions</div>
         <ActionBar
+          rideId={id}
+          currentStatus={ride.status}
+          currentFare={currentFare}
           isActive={isActive}
-          onCancel={(reason) => forceCancel.mutate(reason)}
-          onReassign={(driverId) => reassign.mutate(driverId)}
-          onAdjustFare={(amount, reason) => adjustFare.mutate({ amount, reason })}
-          onEnd={() => endRide.mutate()}
-          onSetStatus={(status, reason) => setStatus.mutate({ status, reason })}
-          onRefund={(amount, reason) => refund.mutate({ amount, reason })}
-          busy={forceCancel.isPending || reassign.isPending || adjustFare.isPending || endRide.isPending || setStatus.isPending || refund.isPending}
+          onDone={invalidate}
         />
       </div>
     </div>
@@ -287,74 +502,6 @@ function TimelineRow({ label, t, extra }: { label: string; t: string | null; ext
       <div className={'text-xs flex-1 ' + (t ? 'text-ink' : 'text-muted')}>
         {fmtTime(t)} {extra ? <span className="text-danger">· {extra}</span> : null}
       </div>
-    </div>
-  );
-}
-
-function ActionBar({ isActive, onCancel, onReassign, onAdjustFare, onEnd, onSetStatus, onRefund, busy }: {
-  isActive: boolean;
-  onCancel: (reason: string) => void;
-  onReassign: (driverId: string) => void;
-  onAdjustFare: (amount: number, reason: string) => void;
-  onEnd: () => void;
-  onSetStatus: (status: string, reason?: string) => void;
-  onRefund: (amount: number | undefined, reason: string) => void;
-  busy: boolean;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      <button disabled={busy || !isActive}
-        onClick={() => {
-          const reason = prompt('Cancellation reason:');
-          if (reason) onCancel(reason);
-        }}
-        className="px-3 py-1.5 text-sm bg-danger text-white rounded disabled:opacity-30">Force cancel</button>
-
-      <button disabled={busy || !isActive}
-        onClick={() => {
-          const driverId = prompt('New driver UUID:');
-          if (driverId) onReassign(driverId);
-        }}
-        className="px-3 py-1.5 text-sm bg-accent text-white rounded disabled:opacity-30">Reassign driver</button>
-
-      <button disabled={busy}
-        onClick={() => {
-          const dollar = prompt('Fare adjustment in dollars (negative for refund):');
-          if (!dollar) return;
-          const amount = Math.round(parseFloat(dollar) * 100);
-          if (Number.isNaN(amount)) { alert('Invalid amount'); return; }
-          const reason = prompt('Reason:') ?? 'admin adjustment';
-          onAdjustFare(amount, reason);
-        }}
-        className="px-3 py-1.5 text-sm bg-white border border-border text-ink rounded">Adjust fare</button>
-
-      <button disabled={busy || !isActive}
-        onClick={() => { if (confirm('Mark ride as completed?')) onEnd(); }}
-        className="px-3 py-1.5 text-sm bg-success text-white rounded disabled:opacity-30">End ride</button>
-
-      <button disabled={busy}
-        onClick={() => {
-          const dollar = prompt('Refund amount in dollars (blank = full refund):');
-          if (dollar === null) return;
-          const amount = dollar.trim() ? Math.round(parseFloat(dollar) * 100) : undefined;
-          if (amount !== undefined && (Number.isNaN(amount) || amount <= 0)) { alert('Invalid amount'); return; }
-          const reason = prompt('Refund reason:') ?? 'admin refund';
-          onRefund(amount, reason);
-        }}
-        className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded disabled:opacity-30">Refund</button>
-
-      <select disabled={busy}
-        onChange={(e) => {
-          const status = e.target.value;
-          if (!status) return;
-          const reason = prompt('Reason for status change (optional):') ?? undefined;
-          onSetStatus(status, reason);
-          e.target.value = '';
-        }}
-        className="px-3 py-1.5 text-sm bg-white border border-border text-ink rounded">
-        <option value="">Set status…</option>
-        {SET_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
-      </select>
     </div>
   );
 }

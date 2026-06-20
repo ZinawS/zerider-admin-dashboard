@@ -51,6 +51,7 @@ export function GamificationPage(): JSX.Element {
   const [tab, setTab] = useState<Tab>('challenges');
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const qc = useQueryClient();
   const regionCode = useRegionScope((s) => s.regionCode);
   const rqs = regionCode ? `?region=${regionCode}` : '';
@@ -178,14 +179,17 @@ export function GamificationPage(): JSX.Element {
                       <span>Ends: <b className="text-ink">{new Date(c.ends_at).toLocaleDateString()}</b></span>
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 items-center">
                     <button onClick={() => openEdit(c)} className="text-xs text-accent hover:underline">Edit</button>
-                    <button
-                      onClick={() => { if (confirm('Delete this challenge?')) deleteMutation.mutate(c.id); }}
-                      className="text-xs text-danger hover:underline"
-                    >
-                      Delete
-                    </button>
+                    {confirmDeleteId === c.id ? (
+                      <>
+                        <span className="text-xs text-danger">Sure?</span>
+                        <button onClick={() => { setConfirmDeleteId(null); deleteMutation.mutate(c.id); }} className="text-xs px-1.5 py-0.5 bg-danger text-white rounded">Yes</button>
+                        <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-muted hover:underline">No</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setConfirmDeleteId(c.id)} className="text-xs text-danger hover:underline">Delete</button>
+                    )}
                   </div>
                 </div>
               ))}

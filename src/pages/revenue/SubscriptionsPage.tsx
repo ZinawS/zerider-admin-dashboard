@@ -1,479 +1,192 @@
-import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
+import { api } from '../../api/client.js';
+import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface Plan {
+interface LedgerEntry {
   id: string;
-  name: string;
-  price_monthly: number;
-  features: string[];
-  rider_discount_pct: number;
-  driver_fee_pct: number;
-  active: boolean;
+  user_id: string;
+  entry_type: string;
+  direction: 'credit' | 'debit';
+  amount_cents: number;
+  service_type: string;
+  reference_id: string | null;
+  created_at: string;
 }
 
-// ---------------------------------------------------------------------------
-// Seed data
-// ---------------------------------------------------------------------------
+interface LedgerPage {
+  items?: LedgerEntry[];
+  data?: LedgerEntry[];
+  total?: number;
+}
 
-const DEFAULT_PLANS: Plan[] = [
-  {
-    id: '1',
-    name: 'Basic',
-    price_monthly: 9.99,
-    features: ['Priority matching', 'Lower fees (12%)'],
-    rider_discount_pct: 0,
-    driver_fee_pct: 12,
-    active: true,
-  },
-  {
-    id: '2',
-    name: 'Pro',
-    price_monthly: 24.99,
-    features: [
-      'Priority matching',
-      'Lowest fees (8%)',
-      'Free cancellations',
-      'Dedicated support',
-    ],
-    rider_discount_pct: 5,
-    driver_fee_pct: 8,
-    active: true,
-  },
-  {
-    id: '3',
-    name: 'Elite',
-    price_monthly: 49.99,
-    features: [
-      'VIP matching',
-      'Zero fees (0%)',
-      'Free cancellations',
-      'Priority support',
-      'Luxury vehicles',
-    ],
-    rider_discount_pct: 10,
-    driver_fee_pct: 0,
-    active: false,
-  },
+interface RevenueSummary {
+  total_cents?: number;
+  by_service?: Array<{ service_type: string; revenue_cents: number; currency?: string }>;
+  by_day?: Array<{ date: string; revenue_cents: number }>;
+}
+
+function fmtUsd(c: number) { return `$${(c / 100).toFixed(2)}`; }
+function iso30DaysAgo() { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); }
+function iso6MonthsAgo() { const d = new Date(); d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
+function isoToday() { return new Date().toISOString().slice(0, 10); }
+
+const STATIC_PLANS = [
+  { name: 'Basic',  price: 9.99,  driver_fee_pct: 12, rider_discount_pct: 0,  features: ['Priority matching', 'Lower fees (12%)'] },
+  { name: 'Pro',    price: 24.99, driver_fee_pct: 8,  rider_discount_pct: 5,  features: ['Priority matching', 'Lowest fees (8%)', 'Free cancellations', 'Dedicated support'] },
+  { name: 'Elite',  price: 49.99, driver_fee_pct: 0,  rider_discount_pct: 10, features: ['VIP matching', 'Zero fees', 'Free cancellations', 'Priority support', 'Luxury vehicles'] },
 ];
-
-const MOCK_SUBSCRIBERS = [
-  { name: 'Basic', subscribers: 234 },
-  { name: 'Pro', subscribers: 89 },
-  { name: 'Elite', subscribers: 12 },
-];
-
-// ---------------------------------------------------------------------------
-// Edit modal
-// ---------------------------------------------------------------------------
-
-interface EditModalProps {
-  plan: Plan;
-  onSave: (updated: Plan) => void;
-  onClose: () => void;
-}
-
-function EditModal({ plan, onSave, onClose }: EditModalProps): JSX.Element {
-  const [price, setPrice] = useState(String(plan.price_monthly));
-  const [driverFee, setDriverFee] = useState(String(plan.driver_fee_pct));
-  const [riderDiscount, setRiderDiscount] = useState(
-    String(plan.rider_discount_pct),
-  );
-
-  const handleSave = () => {
-    onSave({
-      ...plan,
-      price_monthly: Number(price),
-      driver_fee_pct: Number(driverFee),
-      rider_discount_pct: Number(riderDiscount),
-    });
-  };
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded shadow-lg p-5 w-full max-w-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-base font-semibold mb-4">Edit plan — {plan.name}</div>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs text-muted mb-1">
-              Monthly price ($)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">
-              Driver fee (%)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={driverFee}
-              onChange={(e) => setDriverFee(e.target.value)}
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">
-              Rider discount (%)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={riderDiscount}
-              onChange={(e) => setRiderDiscount(e.target.value)}
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm border border-border rounded"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-3 py-1.5 text-sm bg-accent text-white rounded"
-          >
-            Save changes
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Add plan modal
-// ---------------------------------------------------------------------------
-
-const EMPTY_PLAN: Omit<Plan, 'id'> = {
-  name: '',
-  price_monthly: 9.99,
-  features: [],
-  rider_discount_pct: 0,
-  driver_fee_pct: 15,
-  active: true,
-};
-
-interface AddModalProps {
-  onSave: (plan: Omit<Plan, 'id'>) => void;
-  onClose: () => void;
-}
-
-function AddModal({ onSave, onClose }: AddModalProps): JSX.Element {
-  const [form, setForm] = useState(EMPTY_PLAN);
-  const [featuresText, setFeaturesText] = useState('');
-
-  const handleSave = () => {
-    if (!form.name.trim()) return;
-    onSave({
-      ...form,
-      features: featuresText
-        .split('\n')
-        .map((f) => f.trim())
-        .filter(Boolean),
-    });
-  };
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded shadow-lg p-5 w-full max-w-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-base font-semibold mb-4">Add new plan</div>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs text-muted mb-1">Plan name</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. Business"
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">
-              Monthly price ($)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={form.price_monthly}
-              onChange={(e) =>
-                setForm({ ...form, price_monthly: Number(e.target.value) })
-              }
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">
-              Driver fee (%)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={form.driver_fee_pct}
-              onChange={(e) =>
-                setForm({ ...form, driver_fee_pct: Number(e.target.value) })
-              }
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">
-              Rider discount (%)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={form.rider_discount_pct}
-              onChange={(e) =>
-                setForm({ ...form, rider_discount_pct: Number(e.target.value) })
-              }
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">
-              Features (one per line)
-            </label>
-            <textarea
-              rows={4}
-              value={featuresText}
-              onChange={(e) => setFeaturesText(e.target.value)}
-              placeholder="Priority matching&#10;Lower fees"
-              className="w-full px-3 py-2 bg-white text-ink border border-border rounded text-sm resize-none"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm border border-border rounded"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!form.name.trim()}
-            className="px-3 py-1.5 text-sm bg-accent text-white rounded disabled:opacity-50"
-          >
-            Add plan
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
 
 export function SubscriptionsPage(): JSX.Element {
-  const [plans, setPlans] = useState<Plan[]>(DEFAULT_PLANS);
-  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
+  const regionCode = useRegionScope((s) => s.regionCode);
+  const revAmp = regionCode ? `&region=${regionCode}` : '';
 
-  const toggleActive = (id: string) => {
-    setPlans((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, active: !p.active } : p)),
-    );
-  };
+  const { data: rev30d, isLoading: revLoading } = useQuery({
+    queryKey: ['sub-rev-30d', regionCode],
+    queryFn: () => api<RevenueSummary>(`/v1/analytics/revenue?from=${iso30DaysAgo()}&to=${isoToday()}${revAmp}`),
+    staleTime: 5 * 60_000,
+  });
 
-  const handleEdit = (updated: Plan) => {
-    setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-    setEditingPlan(null);
-  };
+  const { data: rev6m } = useQuery({
+    queryKey: ['sub-rev-6m', regionCode],
+    queryFn: () => api<RevenueSummary>(`/v1/analytics/revenue?from=${iso6MonthsAgo()}&to=${isoToday()}${revAmp}`),
+    staleTime: 10 * 60_000,
+  });
 
-  const handleAdd = (newPlan: Omit<Plan, 'id'>) => {
-    const id = String(Date.now());
-    setPlans((prev) => [...prev, { ...newPlan, id }]);
-    setShowAdd(false);
-  };
+  const { data: ledgerData, isLoading: ledgerLoading } = useQuery({
+    queryKey: ['sub-ledger', regionCode],
+    queryFn: () => api<LedgerPage | LedgerEntry[]>(
+      `/v1/admin/wallet/ledger?service_type=subscription&limit=50&sort=desc`,
+    ),
+    staleTime: 2 * 60_000,
+  });
 
-  // Revenue estimate: Pro plan x 100 drivers
-  const proPlan = plans.find((p) => p.name === 'Pro');
-  const revenueEstimate = proPlan
-    ? (proPlan.price_monthly * 100).toFixed(2)
-    : '0.00';
+  const entries: LedgerEntry[] = Array.isArray(ledgerData)
+    ? ledgerData
+    : ((ledgerData as LedgerPage)?.items ?? (ledgerData as LedgerPage)?.data ?? []);
+
+  const subRevenue = (rev30d?.by_service ?? []).find((s) => s.service_type === 'subscription');
+  const totalSubRev30d = subRevenue?.revenue_cents ?? 0;
+  const totalAllRev30d = rev30d?.total_cents ?? 0;
+
+  const monthlyData = (() => {
+    const byMonth: Record<string, number> = {};
+    (rev6m?.by_day ?? []).forEach(({ date, revenue_cents }) => {
+      const m = date.slice(0, 7);
+      byMonth[m] = (byMonth[m] ?? 0) + revenue_cents;
+    });
+    return Object.entries(byMonth)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([m, cents]) => ({ month: m.slice(5), revenue: cents }));
+  })();
+
+  const txCredits = entries.filter((e) => e.direction === 'credit');
+  const txTotal = txCredits.reduce((s, e) => s + e.amount_cents, 0);
 
   return (
     <>
       <PageHeader
-        title="Subscription Plans"
-        subtitle="Manage driver and rider subscription tiers."
-        actions={
-          <button
-            onClick={() => setShowAdd(true)}
-            className="px-4 py-2 bg-accent text-white rounded text-sm"
-          >
-            + Add Plan
-          </button>
-        }
+        title="Subscription Revenue"
+        subtitle="Subscription ledger transactions and revenue metrics."
       />
 
-      {/* Plan cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        {plans.map((plan) => (
-          <div
-            key={plan.id}
-            className={`bg-white border rounded-lg p-5 ${
-              plan.active ? 'border-border' : 'border-border opacity-60'
-            }`}
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <div className="text-base font-semibold">{plan.name}</div>
-                <div className="text-2xl font-bold mt-1">
-                  ${plan.price_monthly.toFixed(2)}
-                  <span className="text-sm font-normal text-muted">/mo</span>
-                </div>
-              </div>
-              <span
-                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  plan.active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {plan.active ? 'Active' : 'Inactive'}
-              </span>
-            </div>
+      <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-4 mb-6 text-sm">
+        <strong>Note:</strong> Subscription plan definitions are static configuration. A subscription management backend (create/edit/activate plans, enrol subscribers) is not yet implemented. Revenue and transaction data below are from the live wallet ledger.
+      </div>
 
-            <ul className="text-xs text-muted space-y-1 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <KpiCard label="Sub revenue 30d"      value={revLoading ? '…' : fmtUsd(totalSubRev30d)} sub="from wallet ledger" />
+        <KpiCard label="Platform revenue 30d" value={revLoading ? '…' : fmtUsd(totalAllRev30d)} sub="all service types" />
+        <KpiCard label="Sub transactions"     value={ledgerLoading ? '…' : String(entries.length)} sub="last 50 records" />
+        <KpiCard label="Credited total"       value={ledgerLoading ? '…' : fmtUsd(txTotal)} sub="from loaded transactions" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-white border border-border rounded-lg p-5">
+          <div className="text-sm font-semibold mb-1">All-service revenue — last 6 months</div>
+          <div className="text-xs text-muted mb-4">USD · rides + marketplace</div>
+          {monthlyData.length === 0 ? (
+            <div className="flex items-center justify-center h-48 text-xs text-muted">No data for this period</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={monthlyData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `$${(v / 100_000).toFixed(0)}k`} />
+                <Tooltip formatter={(v: number) => [`$${(v / 100).toLocaleString()}`, 'Revenue']} />
+                <Bar dataKey="revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div className="bg-white border border-border rounded-lg p-5">
+          <div className="text-sm font-semibold mb-1">Recent subscription transactions</div>
+          <div className="text-xs text-muted mb-3">Live from wallet ledger · service_type = subscription</div>
+          {ledgerLoading ? (
+            <div className="space-y-2">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-8 bg-surface animate-pulse rounded" />)}
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="flex items-center justify-center h-40 text-xs text-muted">No subscription transactions found</div>
+          ) : (
+            <div className="overflow-auto max-h-60 space-y-0.5">
+              {entries.slice(0, 25).map((e) => (
+                <div key={e.id} className="flex items-center justify-between text-xs py-1.5 border-b border-border/40">
+                  <div className="text-muted w-24 shrink-0">{new Date(e.created_at).toLocaleDateString()}</div>
+                  <div className="text-ink capitalize flex-1 px-2">{e.entry_type.replace(/_/g, ' ')}</div>
+                  <div className={`font-medium tabular-nums ${e.direction === 'credit' ? 'text-success' : 'text-danger'}`}>
+                    {e.direction === 'credit' ? '+' : '−'}{fmtUsd(e.amount_cents)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-2 text-sm font-semibold">Subscription plan tiers</div>
+      <div className="text-xs text-muted mb-4">Static configuration — displayed for reference only. Implement a subscriptions service to make these editable.</div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {STATIC_PLANS.map((plan) => (
+          <div key={plan.name} className="bg-white border border-border rounded-lg p-5">
+            <div className="text-base font-semibold">{plan.name}</div>
+            <div className="text-2xl font-bold mt-1">
+              ${plan.price.toFixed(2)}<span className="text-sm font-normal text-muted">/mo</span>
+            </div>
+            <ul className="text-xs text-muted space-y-1 mt-3 mb-4">
               {plan.features.map((f) => (
                 <li key={f} className="flex items-center gap-1.5">
-                  <span className="text-green-600">&#10003;</span> {f}
+                  <span className="text-green-600">✓</span> {f}
                 </li>
               ))}
             </ul>
-
-            <div className="flex flex-wrap gap-2 text-xs mb-4">
+            <div className="flex flex-wrap gap-2 text-xs">
               <div className="bg-surface rounded px-2 py-1">
-                <span className="text-muted">Driver fee:</span>{' '}
-                <span className="font-medium">{plan.driver_fee_pct}%</span>
+                <span className="text-muted">Driver fee:</span> <span className="font-medium">{plan.driver_fee_pct}%</span>
               </div>
               {plan.rider_discount_pct > 0 && (
                 <div className="bg-surface rounded px-2 py-1">
-                  <span className="text-muted">Rider discount:</span>{' '}
-                  <span className="font-medium">{plan.rider_discount_pct}%</span>
+                  <span className="text-muted">Rider discount:</span> <span className="font-medium">{plan.rider_discount_pct}%</span>
                 </div>
               )}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setEditingPlan(plan)}
-                className="px-3 py-1.5 text-xs border border-border rounded hover:bg-surface"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => toggleActive(plan.id)}
-                className={`px-3 py-1.5 text-xs rounded ${
-                  plan.active
-                    ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                }`}
-              >
-                {plan.active ? 'Deactivate' : 'Activate'}
-              </button>
             </div>
           </div>
         ))}
       </div>
-
-      {/* Revenue estimate */}
-      <div className="bg-white border border-border rounded-lg p-5 mb-8">
-        <div className="text-sm font-semibold mb-2">Revenue estimate</div>
-        <p className="text-xs text-muted mb-1">
-          If 100 drivers on Pro = ${revenueEstimate}/mo
-        </p>
-        <p className="text-xs text-muted">
-          All current subscribers:{' '}
-          <span className="font-medium text-ink">
-            $
-            {MOCK_SUBSCRIBERS.reduce((sum, s) => {
-              const plan = plans.find((p) => p.name === s.name);
-              return sum + (plan ? plan.price_monthly * s.subscribers : 0);
-            }, 0).toFixed(2)}
-            /mo
-          </span>
-        </p>
-      </div>
-
-      {/* Subscriber chart */}
-      <div className="bg-white border border-border rounded-lg p-5">
-        <div className="text-sm font-semibold mb-4">Subscribers by plan</div>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart
-            data={MOCK_SUBSCRIBERS}
-            margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} />
-            <Tooltip />
-            <Bar dataKey="subscribers" fill="#6366f1" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Modals */}
-      {editingPlan && (
-        <EditModal
-          plan={editingPlan}
-          onSave={handleEdit}
-          onClose={() => setEditingPlan(null)}
-        />
-      )}
-      {showAdd && (
-        <AddModal onSave={handleAdd} onClose={() => setShowAdd(false)} />
-      )}
     </>
+  );
+}
+
+function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="bg-white border border-border rounded-lg p-4">
+      <div className="text-xs text-muted mb-1">{label}</div>
+      <div className="text-2xl font-bold text-ink">{value}</div>
+      {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
+    </div>
   );
 }

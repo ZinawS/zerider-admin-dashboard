@@ -4,6 +4,7 @@ import { api } from '../../api/client.js';
 import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Pagination } from '../../components/Pagination.js';
+import { useToast } from '../../components/Toast.js';
 import { useDebounced } from '../../hooks/useDebounced.js';
 
 // ---------------------------------------------------------------------------
@@ -169,11 +170,12 @@ function Modal({
 function RejectModal({ listingId, onClose }: { listingId: string; onClose: () => void }) {
   const [reason, setReason] = useState('');
   const qc = useQueryClient();
+  const { toast } = useToast();
   const reject = useMutation({
     mutationFn: () =>
       api<void>(`/v1/admin/marketplace/listings/${listingId}/reject`, { method: 'POST', body: { reason } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }); onClose(); },
-    onError: (e: any) => alert('Rejection failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Rejection failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
   return (
     <Modal title="Reject listing" onClose={onClose}>
@@ -200,13 +202,14 @@ function MessageModal({ listing, onClose }: { listing: Listing; onClose: () => v
   const [message, setMessage] = useState('');
   const [notes, setNotes]     = useState(listing.admin_notes ?? '');
   const qc = useQueryClient();
+  const { toast } = useToast();
   const send = useMutation({
     mutationFn: () =>
       api<void>(`/v1/admin/marketplace/listings/${listing.id}/message`, {
         method: 'POST', body: { message, admin_notes: notes || undefined },
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }); onClose(); },
-    onError: (e: any) => alert('Send failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Send failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
   return (
     <Modal title={`Message owner of "${listing.title.slice(0, 40)}"`} onClose={onClose}>
@@ -243,13 +246,14 @@ function RequestInfoModal({ listing, onClose }: { listing: Listing; onClose: () 
   const [message, setMessage] = useState('');
   const [notes, setNotes]     = useState(listing.admin_notes ?? '');
   const qc = useQueryClient();
+  const { toast } = useToast();
   const req = useMutation({
     mutationFn: () =>
       api<void>(`/v1/admin/marketplace/listings/${listing.id}/request-info`, {
         method: 'POST', body: { message, admin_notes: notes || undefined },
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }); onClose(); },
-    onError: (e: any) => alert('Request failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Request failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
   return (
     <Modal title={`Request more info — "${listing.title.slice(0, 40)}"`} onClose={onClose}>
@@ -287,6 +291,7 @@ function EditModal({ listing, onClose }: { listing: Listing; onClose: () => void
   const [status, setStatus]    = useState(listing.status);
   const [adminNotes, setNotes] = useState(listing.admin_notes ?? '');
   const qc = useQueryClient();
+  const { toast } = useToast();
   const update = useMutation({
     mutationFn: () =>
       api<void>(`/v1/admin/marketplace/listings/${listing.id}`, {
@@ -294,7 +299,7 @@ function EditModal({ listing, onClose }: { listing: Listing; onClose: () => void
         body: { title, description: description || undefined, status, admin_notes: adminNotes || undefined },
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }); onClose(); },
-    onError: (e: any) => alert('Update failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Update failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
   return (
     <Modal title="Edit listing" onClose={onClose} wide>
@@ -339,10 +344,11 @@ function EditModal({ listing, onClose }: { listing: Listing; onClose: () => void
 
 function DeleteModal({ listing, onClose }: { listing: Listing; onClose: () => void }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const del = useMutation({
     mutationFn: () => api<void>(`/v1/admin/marketplace/listings/${listing.id}`, { method: 'DELETE' }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }); onClose(); },
-    onError: (e: any) => alert('Delete failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Delete failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
   return (
     <Modal title="Delete listing?" onClose={onClose}>
@@ -647,6 +653,7 @@ function ListingsTab({ regionCode }: { regionCode: string | null }) {
 
   const debounced = useDebounced(search, 300);
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-marketplace-listings', status, type, debounced, page, regionCode],
@@ -664,7 +671,7 @@ function ListingsTab({ regionCode }: { regionCode: string | null }) {
     mutationFn: (id: string) =>
       api<void>(`/v1/admin/marketplace/listings/${id}/approve`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }),
-    onError: (e: any) => alert('Approval failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Approval failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
 
   const items = data?.data ?? [];
@@ -807,6 +814,7 @@ function ListingsTab({ regionCode }: { regionCode: string | null }) {
 // ---------------------------------------------------------------------------
 
 function ReportsTab({ regionCode }: { regionCode: string | null }) {
+  const { toast } = useToast();
   const [page, setPage] = useState(1);
   const qc = useQueryClient();
 
@@ -823,7 +831,7 @@ function ReportsTab({ regionCode }: { regionCode: string | null }) {
     mutationFn: (id: string) =>
       api<void>(`/v1/admin/marketplace/reports/${id}/resolve`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-marketplace-reports'] }),
-    onError: (e: any) => alert('Failed to resolve: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Failed to resolve: ' + (e?.message ?? 'unknown'), 'error'),
   });
 
   const items: Report[] = (data?.items ?? data?.data ?? []) as Report[];

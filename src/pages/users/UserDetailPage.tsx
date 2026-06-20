@@ -47,6 +47,7 @@ export function UserDetailPage(): JSX.Element {
   const tab = (searchParams.get('tab') as Tab) || 'overview';
   const setTab = (t: Tab) => setSearchParams({ tab: t });
   const [editing, setEditing] = useState(false);
+  const [confirmSuspend, setConfirmSuspend] = useState(false);
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ['admin-user', id],
@@ -201,13 +202,24 @@ export function UserDetailPage(): JSX.Element {
               >
                 Unsuspend
               </button>
+            ) : confirmSuspend ? (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-danger font-medium">Suspend {name}?</span>
+                <button
+                  onClick={() => { setConfirmSuspend(false); suspendMutation.mutate(); }}
+                  disabled={suspendMutation.isPending}
+                  className="px-2 py-1 text-xs bg-danger text-white rounded"
+                >
+                  {suspendMutation.isPending ? '…' : 'Yes'}
+                </button>
+                <button onClick={() => setConfirmSuspend(false)} className="px-2 py-1 text-xs border border-border rounded">
+                  No
+                </button>
+              </div>
             ) : (
               <button
-                onClick={() => {
-                  if (confirm(`Suspend ${name}?`)) suspendMutation.mutate();
-                }}
-                disabled={suspendMutation.isPending}
-                className="px-3 py-1.5 text-sm bg-danger text-white rounded disabled:opacity-50"
+                onClick={() => setConfirmSuspend(true)}
+                className="px-3 py-1.5 text-sm bg-danger text-white rounded"
               >
                 Suspend
               </button>

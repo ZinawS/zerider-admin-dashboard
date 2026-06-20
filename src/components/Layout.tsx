@@ -4,6 +4,7 @@ import { useAuthStore, type AdminRole } from '../stores/auth.store';
 import { useRegionScope } from '../stores/region-scope.store';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { GlobalActionBar, useGlobalActionCount } from './GlobalActionBar';
 
 const ROLE_LABEL: Record<AdminRole, string> = {
   super_admin: 'Super Admin',
@@ -69,12 +70,20 @@ function useOpenSupportCount() {
 export function Layout({ children }: { children: React.ReactNode }): JSX.Element {
   const { user, logout, admin_role } = useAuthStore();
   const openSupportCount = useOpenSupportCount();
+  const globalActionCount = useGlobalActionCount();
   const nav = [...NAV_BASE, ...REVENUE_NAV, { to: '/admin-users', label: 'Admin team' }];
   return (
     <div className="flex min-h-screen bg-bg text-ink">
       <aside className="w-56 border-r border-border bg-surface flex flex-col">
         <div className="px-5 py-6 border-b border-border">
-          <div className="text-lg font-semibold">RideShare</div>
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-semibold">Zerider</div>
+            {globalActionCount > 0 && (
+              <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
+                {globalActionCount > 99 ? '99+' : globalActionCount}
+              </span>
+            )}
+          </div>
           <div className="text-xs text-muted">Admin console</div>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
@@ -112,6 +121,7 @@ export function Layout({ children }: { children: React.ReactNode }): JSX.Element
       </aside>
       <main className="flex-1 overflow-auto">
         <RegionScopeBar />
+        <GlobalActionBar />
         <div className="p-8">{children}</div>
       </main>
     </div>

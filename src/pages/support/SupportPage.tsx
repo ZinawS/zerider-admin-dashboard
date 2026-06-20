@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
+import { useToast } from '../../components/Toast.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -133,6 +134,7 @@ function DetailPanel({ ticketId, source, onClose, onUpdated }: DetailPanelProps)
   const [resolution,      setResolution]      = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const detailKey = ['support-ticket-detail', source, ticketId];
 
@@ -157,7 +159,7 @@ function DetailPanel({ ticketId, source, onClose, onUpdated }: DetailPanelProps)
       qc.invalidateQueries({ queryKey: detailKey });
       onUpdated();
     },
-    onError: (e: any) => alert('Reply failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Reply failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
 
   const statusMutation = useMutation({
@@ -176,7 +178,7 @@ function DetailPanel({ ticketId, source, onClose, onUpdated }: DetailPanelProps)
       qc.invalidateQueries({ queryKey: ['support-tickets', source] });
       onUpdated();
     },
-    onError: (e: any) => alert('Status update failed: ' + (e?.message ?? 'unknown')),
+    onError: (e: any) => toast('Status update failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
 
   const ticket = data;
