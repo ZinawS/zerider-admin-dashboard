@@ -21,18 +21,20 @@ function iso30DaysAgo(): string {
   return d.toISOString().slice(0, 10);
 }
 
-function fmt$(cents: number): string {
+function fmtUsd(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+}
+
+function fmtEtb(cents: number): string {
+  return `ETB ${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function fmtNum(n: number): string {
   return new Intl.NumberFormat('en-US').format(n);
 }
 
-function delta(current: number, previous: number): { pct: string; up: boolean } {
-  if (!previous) return { pct: '—', up: true };
-  const d = ((current - previous) / previous) * 100;
-  return { pct: `${d >= 0 ? '+' : ''}${d.toFixed(1)}%`, up: d >= 0 };
+function fmtPct(rate: number): string {
+  return `${(rate * 100).toFixed(1)}%`;
 }
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -41,20 +43,23 @@ interface DashboardData {
   total_rides: number;
   total_deliveries: number;
   total_revenue_cents: number;
+  delivery_revenue_cents: number;
   active_drivers: number;
   active_riders: number;
   avg_ride_fare_cents: number;
   rides_by_day?: Array<{ date: string; count: number; revenue_cents: number }>;
-  deliveries_by_day?: Array<{ date: string; count: number }>;
+  deliveries_by_day?: Array<{ date: string; count: number; revenue_cents: number }>;
   top_regions?: Array<{ region: string; rides: number; revenue_cents: number }>;
 }
 
 interface RevenueData {
   total_cents: number;
-  by_service?: Array<{ service_type: string; revenue_cents: number }>;
-  by_day?: Array<{ date: string; revenue_cents: number }>;
   commission_cents?: number;
   payout_cents?: number;
+  delivery_revenue_cents?: number;
+  marketplace_revenue_cents?: number;
+  by_service?: Array<{ service_type: string; revenue_cents: number; currency?: string }>;
+  by_day?: Array<{ date: string; revenue_cents: number }>;
 }
 
 interface RidesData {
@@ -72,6 +77,33 @@ interface DriversData {
   new_this_period: number;
   approved: number;
   pending_approval: number;
+}
+
+interface DeliveryData {
+  total: number;
+  delivered: number;
+  cancelled: number;
+  failed: number;
+  active: number;
+  completion_rate: number;
+  revenue_cents: number;
+  by_day?: Array<{ date: string; total: number; delivered: number; revenue_cents: number }>;
+  by_service_type?: Array<{ service_type: string; total: number; delivered: number; revenue_cents: number }>;
+}
+
+interface MarketplaceData {
+  total_listings: number;
+  approved: number;
+  pending: number;
+  rejected: number;
+  total_revenue_cents: number;
+  by_type?: Array<{
+    listing_type: string;
+    total_listings: number;
+    approved: number;
+    rejected: number;
+    listing_fee_revenue_cents: number;
+  }>;
 }
 
 // ─── sub-components ──────────────────────────────────────────────────────────
@@ -96,16 +128,22 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 const SERVICE_COLORS: Record<string, string> = {
   ride_sharing: '#6366f1',
+  economy: '#6366f1',
+  comfort: '#8b5cf6',
+  premium: '#a855f7',
+  xl: '#7c3aed',
   food_delivery: '#f59e0b',
   grocery_delivery: '#10b981',
   package_delivery: '#3b82f6',
-  courier: '#8b5cf6',
+  courier: '#0ea5e9',
+  pharmacy: '#14b8a6',
+  retail: '#06b6d4',
   marketplace: '#ef4444',
   subscription: '#14b8a6',
   promotion: '#f97316',
 };
 
-const VEHICLE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316'];
+const FALLBACK_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316'];
 
 // ─── main ────────────────────────────────────────────────────────────────────
 
@@ -144,21 +182,45 @@ export function AnalyticsPage(): JSX.Element {
     retry: 1,
   });
 
+  const { data: deliveries, isLoading: delivLoading } = useQuery({
+    queryKey: ['analytics-deliveries', from, to, regionCode],
+    queryFn: () => api<DeliveryData>(`/v1/analytics/deliveries${qs}`),
+    staleTime: 2 * 60_000,
+    retry: 1,
+  });
+
+  const { data: marketplace, isLoading: mktLoading } = useQuery({
+    queryKey: ['analytics-marketplace', from, to, regionCode],
+    queryFn: () => api<MarketplaceData>(`/v1/analytics/marketplace${qs}`),
+    staleTime: 2 * 60_000,
+    retry: 1,
+  });
+
   const ridesByDay = dash?.rides_by_day ?? [];
   const delivsByDay = dash?.deliveries_by_day ?? [];
-  const combinedByDay = ridesByDay.map((r) => {
-    const d = delivsByDay.find((x) => x.date === r.date);
-    return { date: r.date.slice(5), rides: r.count, deliveries: d?.count ?? 0, revenue: r.revenue_cents / 100 };
+
+  // Merge rides + deliveries into a single timeline (by date)
+  const allDates = Array.from(new Set([...ridesByDay.map((r) => r.date), ...delivsByDay.map((d) => d.date)])).sort();
+  const combinedByDay = allDates.map((date) => {
+    const r = ridesByDay.find((x) => x.date === date);
+    const d = delivsByDay.find((x) => x.date === date);
+    return {
+      date: date.slice(5),
+      rides: r?.count ?? 0,
+      deliveries: d?.count ?? 0,
+      ride_revenue: (r?.revenue_cents ?? 0) / 100,
+      delivery_revenue: (d?.revenue_cents ?? 0) / 100,
+    };
   });
 
   const revenueByService = revenue?.by_service ?? [];
   const vehicleBreakdown = rides?.by_vehicle_category ?? [];
   const topRegions = dash?.top_regions ?? [];
 
-  const completionRate = rides?.completion_rate != null
-    ? `${(rides.completion_rate * 100).toFixed(1)}%`
+  const rideCompletionRate = rides?.completion_rate != null
+    ? fmtPct(rides.completion_rate)
     : rides?.total && rides?.completed
-      ? `${((rides.completed / rides.total) * 100).toFixed(1)}%`
+      ? fmtPct(rides.completed / rides.total)
       : '—';
 
   return (
@@ -174,24 +236,20 @@ export function AnalyticsPage(): JSX.Element {
         />
       </div>
 
-      {/* KPI grid */}
+      {/* ── Overview KPIs ── */}
       <SectionTitle>Overview</SectionTitle>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard label="Total rides" value={fmtNum(dash?.total_rides ?? 0)} loading={dashLoading} />
         <KpiCard label="Total deliveries" value={fmtNum(dash?.total_deliveries ?? 0)} loading={dashLoading} />
-        <KpiCard label="Total revenue" value={fmt$(dash?.total_revenue_cents ?? 0)} loading={dashLoading} />
-        <KpiCard label="Avg ride fare" value={fmt$(dash?.avg_ride_fare_cents ?? 0)} loading={dashLoading} />
+        <KpiCard label="Ride revenue (USD)" value={fmtUsd(dash?.total_revenue_cents ?? 0)} loading={dashLoading} sub="rides only" />
+        <KpiCard label="Delivery revenue (ETB)" value={fmtEtb(dash?.delivery_revenue_cents ?? 0)} loading={dashLoading} sub="deliveries only" />
         <KpiCard label="Active drivers" value={fmtNum(dash?.active_drivers ?? 0)} loading={dashLoading} />
         <KpiCard label="Active riders" value={fmtNum(dash?.active_riders ?? 0)} loading={dashLoading} />
-        <KpiCard label="Drivers pending" value={fmtNum(drivers?.pending_approval ?? 0)} loading={driversLoading} />
-        <KpiCard
-          label="Completion rate"
-          value={ridesLoading ? '—' : completionRate}
-          loading={ridesLoading}
-        />
+        <KpiCard label="Avg ride fare (USD)" value={fmtUsd(dash?.avg_ride_fare_cents ?? 0)} loading={dashLoading} />
+        <KpiCard label="Ride completion" value={ridesLoading ? '—' : rideCompletionRate} loading={ridesLoading} />
       </div>
 
-      {/* Rides + deliveries trend */}
+      {/* ── Rides & Deliveries trend ── */}
       {combinedByDay.length > 0 && (
         <>
           <SectionTitle>Rides &amp; Deliveries Over Time</SectionTitle>
@@ -211,31 +269,49 @@ export function AnalyticsPage(): JSX.Element {
         </>
       )}
 
-      {/* Revenue trend */}
+      {/* ── Ride revenue trend (USD) ── */}
       {combinedByDay.length > 0 && (
         <>
-          <SectionTitle>Revenue Trend ($)</SectionTitle>
+          <SectionTitle>Ride Revenue Trend (USD)</SectionTitle>
           <div className="bg-surface border border-border rounded-xl p-5">
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={180}>
               <BarChart data={combinedByDay}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                <Tooltip formatter={(v: number) => [`$${v.toFixed(2)}`, 'Revenue']} />
-                <Bar dataKey="revenue" fill="#6366f1" name="Revenue ($)" radius={[3, 3, 0, 0]} />
+                <Tooltip formatter={(v: number) => [fmtUsd(v * 100), 'Revenue']} />
+                <Bar dataKey="ride_revenue" fill="#6366f1" name="Ride Revenue (USD)" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </>
       )}
 
-      {/* Two-column section */}
+      {/* ── Delivery revenue trend (ETB) ── */}
+      {combinedByDay.some((d) => d.delivery_revenue > 0) && (
+        <>
+          <SectionTitle>Delivery Revenue Trend (ETB)</SectionTitle>
+          <div className="bg-surface border border-border rounded-xl p-5">
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={combinedByDay}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}`} />
+                <Tooltip formatter={(v: number) => [fmtEtb(v * 100), 'Revenue (ETB)']} />
+                <Bar dataKey="delivery_revenue" fill="#10b981" name="Delivery Revenue (ETB)" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+
+      {/* ── Two-column: Revenue by service + Vehicles ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
 
-        {/* Revenue by service */}
         {revenueByService.length > 0 && (
           <div className="min-w-0 bg-surface border border-border rounded-xl p-5">
-            <div className="text-sm font-semibold mb-3">Revenue by Service</div>
+            <div className="text-sm font-semibold mb-1">Revenue by Service</div>
+            <div className="text-xs text-muted mb-3">USD for rides &amp; marketplace · ETB for deliveries</div>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
@@ -245,30 +321,41 @@ export function AnalyticsPage(): JSX.Element {
                   innerRadius={55}
                   outerRadius={90}
                   paddingAngle={2}
-                  label={({ service_type }) => service_type.replace('_', ' ')}
+                  label={({ service_type }: any) => service_type.replace(/_/g, ' ')}
                 >
                   {revenueByService.map((entry, i) => (
-                    <Cell key={entry.service_type} fill={SERVICE_COLORS[entry.service_type] ?? VEHICLE_COLORS[i % VEHICLE_COLORS.length]} />
+                    <Cell
+                      key={entry.service_type}
+                      fill={SERVICE_COLORS[entry.service_type] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
+                    />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v: number) => fmt$(v)} />
+                <Tooltip formatter={(v: number, _n: string, p: any) => [
+                  p.payload?.currency === 'ETB' ? fmtEtb(v) : fmtUsd(v),
+                  p.payload?.service_type,
+                ]} />
               </PieChart>
             </ResponsiveContainer>
             <div className="space-y-1 mt-2">
               {revenueByService.map((s, i) => (
                 <div key={s.service_type} className="flex justify-between text-xs">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: SERVICE_COLORS[s.service_type] ?? VEHICLE_COLORS[i % VEHICLE_COLORS.length] }} />
+                    <span
+                      className="w-2.5 h-2.5 rounded-full inline-block"
+                      style={{ backgroundColor: SERVICE_COLORS[s.service_type] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length] }}
+                    />
                     {s.service_type.replace(/_/g, ' ')}
+                    {s.currency === 'ETB' && <span className="text-muted">(ETB)</span>}
                   </span>
-                  <span className="font-medium">{fmt$(s.revenue_cents)}</span>
+                  <span className="font-medium">
+                    {s.currency === 'ETB' ? fmtEtb(s.revenue_cents) : fmtUsd(s.revenue_cents)}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Rides by vehicle category */}
         {vehicleBreakdown.length > 0 && (
           <div className="min-w-0 bg-surface border border-border rounded-xl p-5">
             <div className="text-sm font-semibold mb-3">Rides by Vehicle Category</div>
@@ -280,7 +367,7 @@ export function AnalyticsPage(): JSX.Element {
                 <Tooltip />
                 <Bar dataKey="count" name="Rides" radius={[0, 3, 3, 0]}>
                   {vehicleBreakdown.map((_, i) => (
-                    <Cell key={i} fill={VEHICLE_COLORS[i % VEHICLE_COLORS.length]} />
+                    <Cell key={i} fill={FALLBACK_COLORS[i % FALLBACK_COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -289,15 +376,15 @@ export function AnalyticsPage(): JSX.Element {
         )}
       </div>
 
-      {/* Ride funnel */}
+      {/* ── Ride funnel ── */}
       {!ridesLoading && rides && (
         <>
           <SectionTitle>Ride Funnel</SectionTitle>
           <div className="grid grid-cols-3 gap-4">
             {[
               { label: 'Total requested', value: fmtNum(rides.total) },
-              { label: 'Completed', value: fmtNum(rides.completed), note: completionRate },
-              { label: 'Cancelled', value: fmtNum(rides.cancelled), note: rides.total ? `${((rides.cancelled / rides.total) * 100).toFixed(1)}%` : undefined },
+              { label: 'Completed', value: fmtNum(rides.completed), note: rideCompletionRate },
+              { label: 'Cancelled', value: fmtNum(rides.cancelled), note: rides.total ? fmtPct(rides.cancelled / rides.total) : undefined },
             ].map((s) => (
               <div key={s.label} className="bg-surface border border-border rounded-xl p-5">
                 <div className="text-xs text-muted uppercase tracking-wide mb-1">{s.label}</div>
@@ -309,7 +396,100 @@ export function AnalyticsPage(): JSX.Element {
         </>
       )}
 
-      {/* Driver pipeline */}
+      {/* ── Delivery funnel ── */}
+      {!delivLoading && deliveries && (
+        <>
+          <SectionTitle>Delivery Funnel</SectionTitle>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: 'Total created', value: fmtNum(deliveries.total) },
+              { label: 'Delivered', value: fmtNum(deliveries.delivered), note: deliveries.total ? fmtPct(deliveries.completion_rate) : undefined },
+              { label: 'Active', value: fmtNum(deliveries.active), note: 'in progress' },
+              { label: 'Cancelled / failed', value: fmtNum(deliveries.cancelled + deliveries.failed) },
+            ].map((s) => (
+              <div key={s.label} className="bg-surface border border-border rounded-xl p-5">
+                <div className="text-xs text-muted uppercase tracking-wide mb-1">{s.label}</div>
+                <div className="text-2xl font-bold">{s.value}</div>
+                {s.note && <div className="text-xs text-muted mt-0.5">{s.note}</div>}
+              </div>
+            ))}
+          </div>
+
+          {deliveries.by_service_type && deliveries.by_service_type.length > 0 && (
+            <div className="mt-4 bg-surface border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-bg">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted">Service type</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Total</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Delivered</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Revenue (ETB)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deliveries.by_service_type.map((r, i) => (
+                    <tr key={r.service_type} className={i % 2 === 0 ? '' : 'bg-bg/40'}>
+                      <td className="px-4 py-3 font-medium capitalize">{r.service_type.replace(/_/g, ' ')}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(r.total)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(r.delivered)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtEtb(r.revenue_cents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Marketplace ── */}
+      {!mktLoading && marketplace && (
+        <>
+          <SectionTitle>Marketplace</SectionTitle>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: 'Total listings', value: fmtNum(marketplace.total_listings) },
+              { label: 'Approved', value: fmtNum(marketplace.approved) },
+              { label: 'Pending review', value: fmtNum(marketplace.pending) },
+              { label: 'Listing fee revenue (USD)', value: fmtUsd(marketplace.total_revenue_cents) },
+            ].map((s) => (
+              <div key={s.label} className="bg-surface border border-border rounded-xl p-5">
+                <div className="text-xs text-muted uppercase tracking-wide mb-1">{s.label}</div>
+                <div className="text-2xl font-bold">{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {marketplace.by_type && marketplace.by_type.length > 0 && (
+            <div className="mt-4 bg-surface border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-bg">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted">Listing type</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Total</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Approved</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Rejected</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Fee revenue (USD)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marketplace.by_type.map((r, i) => (
+                    <tr key={r.listing_type} className={i % 2 === 0 ? '' : 'bg-bg/40'}>
+                      <td className="px-4 py-3 font-medium capitalize">{r.listing_type}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(r.total_listings)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(r.approved)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(r.rejected)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtUsd(r.listing_fee_revenue_cents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Driver pipeline ── */}
       {!driversLoading && drivers && (
         <>
           <SectionTitle>Driver Pipeline</SectionTitle>
@@ -329,15 +509,15 @@ export function AnalyticsPage(): JSX.Element {
         </>
       )}
 
-      {/* Revenue split */}
+      {/* ── Revenue split (rides) ── */}
       {!revLoading && revenue && (revenue.commission_cents != null || revenue.payout_cents != null) && (
         <>
-          <SectionTitle>Revenue Split</SectionTitle>
+          <SectionTitle>Ride Revenue Split (USD)</SectionTitle>
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'Gross revenue', value: fmt$(revenue.total_cents) },
-              { label: 'Driver payouts', value: revenue.payout_cents != null ? fmt$(revenue.payout_cents) : '—' },
-              { label: 'Net commission', value: revenue.commission_cents != null ? fmt$(revenue.commission_cents) : '—' },
+              { label: 'Gross ride revenue', value: fmtUsd(revenue.total_cents) },
+              { label: 'Driver payouts', value: revenue.payout_cents != null ? fmtUsd(revenue.payout_cents) : '—' },
+              { label: 'Net commission', value: revenue.commission_cents != null ? fmtUsd(revenue.commission_cents) : '—' },
             ].map((s) => (
               <div key={s.label} className="bg-surface border border-border rounded-xl p-5">
                 <div className="text-xs text-muted uppercase tracking-wide mb-1">{s.label}</div>
@@ -348,17 +528,17 @@ export function AnalyticsPage(): JSX.Element {
         </>
       )}
 
-      {/* Top regions */}
+      {/* ── Top regions ── */}
       {topRegions.length > 0 && (
         <>
-          <SectionTitle>Top Regions</SectionTitle>
+          <SectionTitle>Top Regions (Rides)</SectionTitle>
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-bg">
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted">Region</th>
                   <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Rides</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Revenue</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted">Revenue (USD)</th>
                 </tr>
               </thead>
               <tbody>
@@ -366,7 +546,7 @@ export function AnalyticsPage(): JSX.Element {
                   <tr key={r.region} className={i % 2 === 0 ? '' : 'bg-bg/40'}>
                     <td className="px-4 py-3 font-medium">{r.region}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{fmtNum(r.rides)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmt$(r.revenue_cents)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{fmtUsd(r.revenue_cents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -375,8 +555,7 @@ export function AnalyticsPage(): JSX.Element {
         </>
       )}
 
-      {/* empty state if everything is loading / no data yet */}
-      {!dashLoading && !dash?.total_rides && !combinedByDay.length && (
+      {!dashLoading && !dash?.total_rides && !dash?.total_deliveries && (
         <div className="text-center text-muted py-20">
           <div className="text-4xl mb-3">📊</div>
           <div className="text-sm">No data for the selected range. Adjust the date filter or wait for the analytics service to index more events.</div>
