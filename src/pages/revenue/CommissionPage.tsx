@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
+import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { useToast } from '../../components/Toast.js';
 
@@ -89,6 +90,7 @@ function money(cents: number): string {
 
 export function CommissionPage(): JSX.Element {
   const { toast } = useToast();
+  const regionCode = useRegionScope((s) => s.regionCode);
 
   // Per-category rates (local editable state)
   const [categoryRates, setCategoryRates] =
@@ -96,11 +98,13 @@ export function CommissionPage(): JSX.Element {
 
   // Fetch current pricing rules to extract global rates
   const { data: pricingData } = useQuery({
-    queryKey: ['commission-pricing'],
-    queryFn: () =>
-      api<{ items: PricingRule[] } | PricingRule[]>('/v1/admin/pricing').then(
+    queryKey: ['commission-pricing', regionCode],
+    queryFn: () => {
+      const url = regionCode ? `/v1/admin/pricing?region=${regionCode}` : '/v1/admin/pricing';
+      return api<{ items: PricingRule[] } | PricingRule[]>(url).then(
         (r) => (Array.isArray(r) ? r : (r.items ?? [])),
-      ),
+      );
+    },
     retry: false,
   });
 
