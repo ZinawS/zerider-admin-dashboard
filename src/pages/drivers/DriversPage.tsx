@@ -222,7 +222,7 @@ export function DriversPage(): JSX.Element {
     queryKey: ['driverDeliveries', selectedDriverId],
     queryFn: () =>
       api<{ items: any[]; total: number; has_more: boolean }>(
-        `/v1/deliveries/admin/all?q=${selectedDriverId}&limit=500`,
+        `/v1/admin/deliveries?q=${selectedDriverId}&limit=500`,
       ),
     enabled: !!selectedDriverId,
   });

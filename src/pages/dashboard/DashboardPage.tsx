@@ -159,6 +159,10 @@ function fmtUsd(c: number | string | null | undefined) {
   return `$${(Number(c ?? 0) / 100).toFixed(2)}`;
 }
 
+function fmtEtb(c: number | string | null | undefined) {
+  return `ETB ${(Number(c ?? 0) / 100).toFixed(2)}`;
+}
+
 function statusColor(s: string): string {
   if (s === 'completed') return 'bg-success/10 text-success';
   if (s.startsWith('cancelled') || s === 'no_drivers_available') return 'bg-danger/10 text-danger';
@@ -283,35 +287,33 @@ export function DashboardPage(): JSX.Element {
       <div className="bg-gradient-to-r from-accent/10 to-accent/5 border border-accent/20 rounded-lg p-4 mb-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="text-xs uppercase text-accent/70 font-medium tracking-wide">Total Platform Revenue</div>
-            <div className="text-3xl font-bold text-accent mt-0.5">{fmtUsd(totalPlatformRevenueCents)}</div>
-            <div className="text-xs text-muted mt-0.5">All branches combined · rides + deliveries + marketplace</div>
+            <div className="text-xs uppercase text-accent/70 font-medium tracking-wide">Platform Revenue by Branch</div>
+            <div className="text-xs text-muted mt-1">Rides &amp; marketplace in USD · Deliveries in ETB (different currencies — not summed)</div>
           </div>
           <div className="flex gap-6 flex-wrap">
-            <RevenueSource label="Rides" cents={rideRevenueCents} />
-            <RevenueSource label="Deliveries" cents={deliveryRevenueCents} />
-            <RevenueSource label="Marketplace" cents={marketplaceRevenueCents} />
+            <RevenueSource label="Rides (USD)" cents={rideRevenueCents} fmt={fmtUsd} />
+            <RevenueSource label="Deliveries (ETB)" cents={deliveryRevenueCents} fmt={fmtEtb} />
+            <RevenueSource label="Marketplace (USD)" cents={marketplaceRevenueCents} fmt={fmtUsd} />
           </div>
         </div>
-        {totalPlatformRevenueCents > 0 && (
+        {(rideRevenueCents + marketplaceRevenueCents) > 0 && (
           <div className="mt-3 flex h-2 rounded-full overflow-hidden gap-0.5">
-            <div className="bg-accent" style={{ width: `${(rideRevenueCents / totalPlatformRevenueCents) * 100}%` }} title={`Rides ${fmtUsd(rideRevenueCents)}`} />
-            <div className="bg-success" style={{ width: `${(deliveryRevenueCents / totalPlatformRevenueCents) * 100}%` }} title={`Deliveries ${fmtUsd(deliveryRevenueCents)}`} />
-            <div className="bg-yellow-500" style={{ width: `${(marketplaceRevenueCents / totalPlatformRevenueCents) * 100}%` }} title={`Marketplace ${fmtUsd(marketplaceRevenueCents)}`} />
+            <div className="bg-accent" style={{ width: `${(rideRevenueCents / (rideRevenueCents + marketplaceRevenueCents)) * 100}%` }} title={`Rides ${fmtUsd(rideRevenueCents)}`} />
+            <div className="bg-yellow-500" style={{ width: `${(marketplaceRevenueCents / (rideRevenueCents + marketplaceRevenueCents)) * 100}%` }} title={`Marketplace ${fmtUsd(marketplaceRevenueCents)}`} />
           </div>
         )}
         <div className="flex gap-4 mt-1.5 text-xs text-muted">
-          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-accent" />Rides</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-success" />Deliveries</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-yellow-500" />Marketplace</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-accent" />Rides (USD)</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-success" />Deliveries (ETB)</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-yellow-500" />Marketplace (USD)</span>
         </div>
       </div>
 
       {/* Top KPIs — Rides */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <Kpi label="Rides today" value={summary?.rides_today ?? (sumLoading ? '…' : 0)} />
-        <Kpi label="Revenue today" value={fmtUsd((summary?.revenue_today_cents ?? 0) + deliveryRevenueTodayCents)} />
-        <Kpi label="Delivery rev. today" value={fmtUsd(deliveryRevenueTodayCents)} sub="delivery revenue" />
+        <Kpi label="Ride revenue today" value={fmtUsd(summary?.revenue_today_cents ?? 0)} />
+        <Kpi label="Delivery rev. today" value={fmtEtb(deliveryRevenueTodayCents)} sub="delivery revenue (ETB)" />
         <Kpi label="Drivers online" value={summary?.active_drivers ?? (sumLoading ? '…' : 0)} />
         <Kpi label="Active rides" value={summary?.active_rides ?? (sumLoading ? '…' : 0)} accent={!!summary?.active_rides} />
       </div>
@@ -326,9 +328,9 @@ export function DashboardPage(): JSX.Element {
 
       {/* Delivery Revenue KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <Kpi label="Delivery revenue" value={fmtUsd(deliveryRevenueCents)} sub="total from completed" />
-        <Kpi label="Delivery commissions" value={fmtUsd(deliveryCommissionCents)} sub="platform share" />
-        <Kpi label="Delivery payouts" value={fmtUsd(deliveryPayoutCents)} sub="paid to drivers" />
+        <Kpi label="Delivery revenue" value={fmtEtb(deliveryRevenueCents)} sub="total from completed (ETB)" />
+        <Kpi label="Delivery commissions" value={fmtEtb(deliveryCommissionCents)} sub="platform share (ETB)" />
+        <Kpi label="Delivery payouts" value={fmtEtb(deliveryPayoutCents)} sub="paid to drivers (ETB)" />
         <Kpi label="Delivery growth" value={totalDeliveries > 0 ? `${((completedDeliveries / totalDeliveries) * 100).toFixed(0)}%` : '—'} sub="completion rate" />
       </div>
 
@@ -528,11 +530,11 @@ function deliveryStatusColor(s: string): string {
   }
 }
 
-function RevenueSource({ label, cents }: { label: string; cents: number }) {
+function RevenueSource({ label, cents, fmt = fmtUsd }: { label: string; cents: number; fmt?: (c: number) => string }) {
   return (
     <div className="text-center">
       <div className="text-xs text-muted uppercase">{label}</div>
-      <div className="text-lg font-semibold text-ink">{fmtUsd(cents)}</div>
+      <div className="text-lg font-semibold text-ink">{fmt(cents)}</div>
     </div>
   );
 }
