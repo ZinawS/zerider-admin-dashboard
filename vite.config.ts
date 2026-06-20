@@ -29,6 +29,11 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // Analytics endpoints — proxy to analytics service (versioned path)
+      '/v1/analytics': {
+        target: 'http://localhost:3018',
+        changeOrigin: true,
+      },
     },
   },
 });

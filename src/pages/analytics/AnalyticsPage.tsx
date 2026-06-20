@@ -116,28 +116,28 @@ export function AnalyticsPage(): JSX.Element {
 
   const { data: dash, isLoading: dashLoading } = useQuery({
     queryKey: ['analytics-dashboard', from, to],
-    queryFn: () => api<DashboardData>(`/analytics/dashboard${qs}`),
+    queryFn: () => api<DashboardData>(`/v1/analytics/dashboard${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: revenue, isLoading: revLoading } = useQuery({
     queryKey: ['analytics-revenue', from, to],
-    queryFn: () => api<RevenueData>(`/analytics/revenue${qs}`),
+    queryFn: () => api<RevenueData>(`/v1/analytics/revenue${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: rides, isLoading: ridesLoading } = useQuery({
     queryKey: ['analytics-rides', from, to],
-    queryFn: () => api<RidesData>(`/analytics/rides${qs}`),
+    queryFn: () => api<RidesData>(`/v1/analytics/rides${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: drivers, isLoading: driversLoading } = useQuery({
     queryKey: ['analytics-drivers', from, to],
-    queryFn: () => api<DriversData>(`/analytics/drivers${qs}`),
+    queryFn: () => api<DriversData>(`/v1/analytics/drivers${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
@@ -232,7 +232,7 @@ export function AnalyticsPage(): JSX.Element {
 
         {/* Revenue by service */}
         {revenueByService.length > 0 && (
-          <div className="bg-surface border border-border rounded-xl p-5">
+          <div className="min-w-0 bg-surface border border-border rounded-xl p-5">
             <div className="text-sm font-semibold mb-3">Revenue by Service</div>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -268,7 +268,7 @@ export function AnalyticsPage(): JSX.Element {
 
         {/* Rides by vehicle category */}
         {vehicleBreakdown.length > 0 && (
-          <div className="bg-surface border border-border rounded-xl p-5">
+          <div className="min-w-0 bg-surface border border-border rounded-xl p-5">
             <div className="text-sm font-semibold mb-3">Rides by Vehicle Category</div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={vehicleBreakdown} layout="vertical">
