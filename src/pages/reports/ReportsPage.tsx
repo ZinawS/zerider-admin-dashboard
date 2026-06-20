@@ -194,10 +194,10 @@ export function ReportsPage(): JSX.Element {
       </div>
 
       {tab === 'revenue' && <RevenueReport params={params.toString()} range={range} />}
-      {tab === 'deliveries' && <DeliveriesReport range={range} />}
+      {tab === 'deliveries' && <DeliveriesReport params={params.toString()} range={range} />}
       {tab === 'drivers' && <DriversReport params={params.toString()} range={range} />}
       {tab === 'riders' && <RidersReport params={params.toString()} range={range} />}
-      {tab === 'marketplace' && <MarketplaceReport range={range} />}
+      {tab === 'marketplace' && <MarketplaceReport params={params.toString()} range={range} />}
       {tab === 'refunds' && <RefundsReport params={params.toString()} range={range} />}
       {tab === 'operations' && <OpsReport params={params.toString()} range={range} />}
     </>
@@ -253,11 +253,11 @@ interface DeliveryItem {
   currency: string | null;
 }
 
-function DeliveriesReport({ range }: { range: { start: string; end: string } }) {
+function DeliveriesReport({ params, range }: { params: string; range: { start: string; end: string } }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['report-deliveries', range.start, range.end],
+    queryKey: ['report-deliveries', params],
     queryFn: () => api<{ items: DeliveryItem[]; total: number; has_more: boolean }>(
-      `/v1/admin/deliveries?limit=500&page=1`,
+      `/v1/admin/deliveries?limit=500&page=1&${params}`,
     ),
   });
 
@@ -917,15 +917,15 @@ const LISTING_TYPE_LABEL: Record<string, string> = {
   standard: 'Standard', featured: 'Featured', sponsored: 'Sponsored', premium: 'Premium',
 };
 
-function MarketplaceReport({ range }: { range: { start: string; end: string } }) {
+function MarketplaceReport({ params, range }: { params: string; range: { start: string; end: string } }) {
   const { data: rev, isLoading } = useQuery({
-    queryKey: ['report-marketplace-revenue'],
-    queryFn: () => api<any>('/v1/admin/marketplace/revenue'),
+    queryKey: ['report-marketplace-revenue', params],
+    queryFn: () => api<any>(`/v1/admin/marketplace/revenue?${params}`),
   });
 
   const { data: listingsData } = useQuery({
-    queryKey: ['report-marketplace-listings'],
-    queryFn: () => api<any>('/v1/admin/listings?limit=500'),
+    queryKey: ['report-marketplace-listings', params],
+    queryFn: () => api<any>(`/v1/admin/listings?limit=500&${params}`),
   });
 
   const allListings = listingsData?.data ?? [];

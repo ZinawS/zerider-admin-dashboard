@@ -188,8 +188,8 @@ export function DashboardPage(): JSX.Element {
   });
 
   const { data: pendingDrivers } = useQuery({
-    queryKey: ['pending-drivers'],
-    queryFn: () => api<{ items: Driver[] }>('/v1/admin/users?role=driver&status=pending&limit=10'),
+    queryKey: ['pending-drivers', regionCode],
+    queryFn: () => api<{ items: Driver[] }>(`/v1/admin/users?role=driver&status=pending&limit=10${rAmp}`),
     refetchInterval: 60_000,
   });
 
@@ -200,20 +200,20 @@ export function DashboardPage(): JSX.Element {
   });
 
   const { data: deliveryData } = useQuery({
-    queryKey: ['dashboard-deliveries'],
-    queryFn: () => api<DeliveryListResponse>('/v1/admin/deliveries?limit=200&page=1'),
+    queryKey: ['dashboard-deliveries', regionCode],
+    queryFn: () => api<DeliveryListResponse>(`/v1/admin/deliveries?limit=200&page=1${rAmp}`),
     refetchInterval: 30_000,
   });
 
   const { data: marketplaceRevenue } = useQuery({
-    queryKey: ['dashboard-marketplace-revenue'],
-    queryFn: () => api<{ totals: { total_revenue_cents: string | null; total_paid_listings: number | null; active_listings: number | null; pending_listings: number | null }; by_type: any[] }>('/v1/admin/marketplace/revenue'),
+    queryKey: ['dashboard-marketplace-revenue', regionCode],
+    queryFn: () => api<{ totals: { total_revenue_cents: string | null; total_paid_listings: number | null; active_listings: number | null; pending_listings: number | null }; by_type: any[] }>(`/v1/admin/marketplace/revenue${r}`),
     refetchInterval: 60_000,
   });
 
   const { data: rideRevenueHistory } = useQuery({
-    queryKey: ['dashboard-ride-revenue-alltime'],
-    queryFn: () => api<any[]>(`/v1/admin/rides/reports/revenue?start=2024-01-01T00:00:00Z&end=${new Date().toISOString()}`),
+    queryKey: ['dashboard-ride-revenue-alltime', regionCode],
+    queryFn: () => api<any[]>(`/v1/admin/rides/reports/revenue?start=2024-01-01T00:00:00Z&end=${new Date().toISOString()}${rAmp}`),
     staleTime: 5 * 60 * 1000,
     refetchInterval: 300_000,
   });

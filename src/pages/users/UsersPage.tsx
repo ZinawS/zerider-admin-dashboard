@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { useRegionScope } from '../../stores/region-scope.store';
 import { PageHeader } from '../../components/PageHeader';
 import { Table, type Column } from '../../components/Table';
 import { Pagination } from '../../components/Pagination';
@@ -45,6 +46,7 @@ function sortVal(u: RiderRow, key: string) {
 
 export function UsersPage(): JSX.Element {
   const navigate = useNavigate();
+  const regionCode = useRegionScope((s) => s.regionCode);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -53,11 +55,12 @@ export function UsersPage(): JSX.Element {
   const debounced = useDebounced(search);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-riders', debounced, status],
+    queryKey: ['admin-riders', debounced, status, regionCode],
     queryFn: () => {
       const params = new URLSearchParams({ role: 'rider', limit: '200' });
       if (debounced) params.set('search', debounced);
       if (status) params.set('status', status);
+      if (regionCode) params.set('region', regionCode);
       return api<ListResponse>(`/v1/admin/users?${params.toString()}`);
     },
   });

@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { DateRangeFilter } from '../../components/DateRangeFilter.js';
+import { useRegionScope } from '../../stores/region-scope.store.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -111,32 +112,33 @@ const VEHICLE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '
 export function AnalyticsPage(): JSX.Element {
   const [from, setFrom] = useState(iso30DaysAgo());
   const [to, setTo] = useState(isoToday());
+  const regionCode = useRegionScope((s) => s.regionCode);
 
-  const qs = `?from=${from}&to=${to}`;
+  const qs = `?from=${from}&to=${to}${regionCode ? `&region=${regionCode}` : ''}`;
 
   const { data: dash, isLoading: dashLoading } = useQuery({
-    queryKey: ['analytics-dashboard', from, to],
+    queryKey: ['analytics-dashboard', from, to, regionCode],
     queryFn: () => api<DashboardData>(`/v1/analytics/dashboard${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: revenue, isLoading: revLoading } = useQuery({
-    queryKey: ['analytics-revenue', from, to],
+    queryKey: ['analytics-revenue', from, to, regionCode],
     queryFn: () => api<RevenueData>(`/v1/analytics/revenue${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: rides, isLoading: ridesLoading } = useQuery({
-    queryKey: ['analytics-rides', from, to],
+    queryKey: ['analytics-rides', from, to, regionCode],
     queryFn: () => api<RidesData>(`/v1/analytics/rides${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: drivers, isLoading: driversLoading } = useQuery({
-    queryKey: ['analytics-drivers', from, to],
+    queryKey: ['analytics-drivers', from, to, regionCode],
     queryFn: () => api<DriversData>(`/v1/analytics/drivers${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,

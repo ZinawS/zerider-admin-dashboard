@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
+import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Table, type Column } from '../../components/Table.js';
 import { Pagination } from '../../components/Pagination.js';
@@ -162,6 +163,7 @@ function driverSortVal(d: Driver, key: string) {
 export function DriversPage(): JSX.Element {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const regionCode = useRegionScope((s) => s.regionCode);
   const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState<StatusFilter>('');
   const [search, setSearch] = useState('');
@@ -200,11 +202,12 @@ export function DriversPage(): JSX.Element {
   const debounced = useDebounced(search);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['drivers', status, debounced],
+    queryKey: ['drivers', status, debounced, regionCode],
     queryFn: () => {
       const qs = new URLSearchParams({ role: 'driver', limit: '100' });
       if (status) qs.set('status', status);
       if (debounced) qs.set('search', debounced);
+      if (regionCode) qs.set('region', regionCode);
       return api<{ items: Driver[] }>(`/v1/admin/drivers?${qs.toString()}`);
     },
   });

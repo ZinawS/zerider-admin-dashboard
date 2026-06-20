@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { useRegionScope } from '../../stores/region-scope.store';
 import { PageHeader } from '../../components/PageHeader';
 import { DateRangeFilter } from '../../components/DateRangeFilter';
 import { Pagination } from '../../components/Pagination';
@@ -57,6 +58,7 @@ function sortVal(p: Payout, key: string) {
 export function PayoutsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const regionCode = useRegionScope((s) => s.regionCode);
 
   const [statusFilter, setStatusFilter] = useState('pending');
   const [dateFrom, setDateFrom] = useState('');
@@ -78,8 +80,14 @@ export function PayoutsPage() {
 
   const queryStatus = statusFilter === 'all' ? '' : statusFilter;
   const { data: payoutsData, isLoading } = useQuery({
-    queryKey: ['payouts', queryStatus],
-    queryFn: () => api<{ items: Payout[] }>(`/v1/admin/payments/payouts${queryStatus ? `?status=${queryStatus}` : ''}`),
+    queryKey: ['payouts', queryStatus, regionCode],
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (queryStatus) qs.set('status', queryStatus);
+      if (regionCode) qs.set('region', regionCode);
+      const q = qs.toString();
+      return api<{ items: Payout[] }>(`/v1/admin/payments/payouts${q ? `?${q}` : ''}`);
+    },
   });
 
   const { data: allDriversData } = useQuery({
