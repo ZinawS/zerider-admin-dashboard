@@ -46,13 +46,13 @@ export function SubscriptionsPage(): JSX.Element {
 
   const { data: rev30d, isLoading: revLoading } = useQuery({
     queryKey: ['sub-rev-30d', regionCode],
-    queryFn: () => api<RevenueSummary>(`/v1/analytics/revenue?from=${iso30DaysAgo()}&to=${isoToday()}${revAmp}`),
+    queryFn: () => api<RevenueSummary>(`/v1/admin/analytics/revenue?from=${iso30DaysAgo()}&to=${isoToday()}${revAmp}`),
     staleTime: 5 * 60_000,
   });
 
   const { data: rev6m } = useQuery({
     queryKey: ['sub-rev-6m', regionCode],
-    queryFn: () => api<RevenueSummary>(`/v1/analytics/revenue?from=${iso6MonthsAgo()}&to=${isoToday()}${revAmp}`),
+    queryFn: () => api<RevenueSummary>(`/v1/admin/analytics/revenue?from=${iso6MonthsAgo()}&to=${isoToday()}${revAmp}`),
     staleTime: 10 * 60_000,
   });
 

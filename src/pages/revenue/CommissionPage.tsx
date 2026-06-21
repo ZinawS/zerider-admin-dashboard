@@ -79,13 +79,13 @@ export function CommissionPage(): JSX.Element {
   // ── Revenue analytics ──────────────────────────────────────────────────────
   const { data: revenue30d } = useQuery({
     queryKey: ['commission-revenue-30d', regionCode],
-    queryFn: () => api<RevenueSummary>(`/v1/analytics/revenue?from=${iso30DaysAgo()}&to=${isoToday()}${amp ? amp.replace('?', '&') : ''}`),
+    queryFn: () => api<RevenueSummary>(`/v1/admin/analytics/revenue?from=${iso30DaysAgo()}&to=${isoToday()}${amp ? amp.replace('?', '&') : ''}`),
     staleTime: 5 * 60_000,
   });
 
   const { data: revenue6m } = useQuery({
     queryKey: ['commission-revenue-6m', regionCode],
-    queryFn: () => api<RevenueSummary>(`/v1/analytics/revenue?from=${iso6MonthsAgo()}&to=${isoToday()}${amp ? amp.replace('?', '&') : ''}`),
+    queryFn: () => api<RevenueSummary>(`/v1/admin/analytics/revenue?from=${iso6MonthsAgo()}&to=${isoToday()}${amp ? amp.replace('?', '&') : ''}`),
     staleTime: 10 * 60_000,
   });
 

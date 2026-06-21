@@ -157,42 +157,42 @@ export function AnalyticsPage(): JSX.Element {
 
   const { data: dash, isLoading: dashLoading, isError: dashError, refetch: dashRefetch } = useQuery({
     queryKey: ['analytics-dashboard', from, to, regionCode],
-    queryFn: () => api<DashboardData>(`/v1/analytics/dashboard${qs}`),
+    queryFn: () => api<DashboardData>(`/v1/admin/analytics/dashboard${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: revenue, isLoading: revLoading } = useQuery({
     queryKey: ['analytics-revenue', from, to, regionCode],
-    queryFn: () => api<RevenueData>(`/v1/analytics/revenue${qs}`),
+    queryFn: () => api<RevenueData>(`/v1/admin/analytics/revenue${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: rides, isLoading: ridesLoading } = useQuery({
     queryKey: ['analytics-rides', from, to, regionCode],
-    queryFn: () => api<RidesData>(`/v1/analytics/rides${qs}`),
+    queryFn: () => api<RidesData>(`/v1/admin/analytics/rides${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: drivers, isLoading: driversLoading } = useQuery({
     queryKey: ['analytics-drivers', from, to, regionCode],
-    queryFn: () => api<DriversData>(`/v1/analytics/drivers${qs}`),
+    queryFn: () => api<DriversData>(`/v1/admin/analytics/drivers${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: deliveries, isLoading: delivLoading } = useQuery({
     queryKey: ['analytics-deliveries', from, to, regionCode],
-    queryFn: () => api<DeliveryData>(`/v1/analytics/deliveries${qs}`),
+    queryFn: () => api<DeliveryData>(`/v1/admin/analytics/deliveries${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
 
   const { data: marketplace, isLoading: mktLoading } = useQuery({
     queryKey: ['analytics-marketplace', from, to, regionCode],
-    queryFn: () => api<MarketplaceData>(`/v1/analytics/marketplace${qs}`),
+    queryFn: () => api<MarketplaceData>(`/v1/admin/analytics/marketplace${qs}`),
     staleTime: 2 * 60_000,
     retry: 1,
   });
