@@ -10,6 +10,7 @@ import { useDebounced } from '../../hooks/useDebounced.js';
 import { useSort } from '../../hooks/useSort.js';
 import { exportToCsv } from '../../lib/export.js';
 import { useToast } from '../../components/Toast.js';
+import { QueryError } from '../../components/QueryError.js';
 
 // ---------- Types ----------
 
@@ -201,7 +202,7 @@ export function DriversPage(): JSX.Element {
 
   const debounced = useDebounced(search);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['drivers', status, debounced, regionCode],
     queryFn: () => {
       const qs = new URLSearchParams({ role: 'driver', limit: '100' });
@@ -348,6 +349,8 @@ export function DriversPage(): JSX.Element {
   const allDrivers = data?.items ?? [];
   const { sort, toggle, sorted } = useSort(allDrivers, driverSortVal);
   const pageItems = useMemo(() => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [sorted, page]);
+
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   const handleExport = () => {
     exportToCsv(`drivers-${new Date().toISOString().slice(0, 10)}`, sorted, [

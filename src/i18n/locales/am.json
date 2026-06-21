@@ -1,0 +1,41 @@
+{
+  "common": {
+    "loading": "",
+    "error": "",
+    "retry": "",
+    "save": "",
+    "cancel": "",
+    "confirm": "",
+    "search": "",
+    "filter": "",
+    "export": "",
+    "noData": "",
+    "status": {
+      "active": "",
+      "inactive": "",
+      "pending": "",
+      "approved": "",
+      "rejected": "",
+      "suspended": ""
+    }
+  },
+  "nav": {
+    "dashboard": "",
+    "rides": "",
+    "drivers": "",
+    "users": "",
+    "analytics": "",
+    "payments": "",
+    "marketplace": "",
+    "delivery": "",
+    "reports": "",
+    "settings": ""
+  },
+  "dashboard": {
+    "title": "",
+    "totalRides": "",
+    "activeDrivers": "",
+    "revenue": "",
+    "deliveries": ""
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try again",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "noData": "No data available",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "suspended": "Suspended"
+    }
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "rides": "Rides",
+    "drivers": "Drivers",
+    "users": "Users",
+    "analytics": "Analytics",
+    "payments": "Payments",
+    "marketplace": "Marketplace",
+    "delivery": "Delivery",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalRides": "Total Rides",
+    "activeDrivers": "Active Drivers",
+    "revenue": "Revenue",
+    "deliveries": "Deliveries"
+  }
+}

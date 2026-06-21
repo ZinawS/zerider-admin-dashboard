@@ -8,6 +8,7 @@ import { Pagination } from '../../components/Pagination';
 import { useToast } from '../../components/Toast';
 import { useSort } from '../../hooks/useSort';
 import { exportToCsv } from '../../lib/export';
+import { QueryError } from '../../components/QueryError.js';
 
 interface Payout {
   id: string;
@@ -79,7 +80,7 @@ export function PayoutsPage() {
   }, [searchTerm]);
 
   const queryStatus = statusFilter === 'all' ? '' : statusFilter;
-  const { data: payoutsData, isLoading } = useQuery({
+  const { data: payoutsData, isLoading, isError, refetch } = useQuery({
     queryKey: ['payouts', queryStatus, regionCode],
     queryFn: () => {
       const qs = new URLSearchParams();
@@ -157,6 +158,8 @@ export function PayoutsPage() {
 
   const { sort, toggle, sorted } = useSort(dateFiltered, sortVal, { key: 'date', dir: 'desc' });
   const pageItems = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   const displayedDrivers = (driversData?.items ?? []).filter((d) =>
     `${d.first_name} ${d.last_name} ${d.email} ${d.phone_number}`.toLowerCase().includes(debouncedSearch.toLowerCase()),

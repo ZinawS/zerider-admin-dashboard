@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { Pagination } from '../../components/Pagination';
 import { DateRangeFilter } from '../../components/DateRangeFilter';
 import { exportToCsv } from '../../lib/export';
+import { QueryError } from '../../components/QueryError.js';
 
 interface LedgerEntry {
   id: string;
@@ -137,7 +138,7 @@ export function WalletPage(): JSX.Element {
     return new URLSearchParams(p).toString();
   }, [dateFrom, dateTo, regionCode]);
 
-  const { data, isLoading } = useQuery<LedgerResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<LedgerResponse>({
     queryKey: ['wallet-ledger', params],
     queryFn: () => api(`/v1/admin/wallet/ledger?${params}`),
   });
@@ -169,6 +170,8 @@ export function WalletPage(): JSX.Element {
     }
     return map;
   }, [summary]);
+
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   function handleExport() {
     exportToCsv(`earnings-ledger-${new Date().toISOString().slice(0, 10)}`, items, [

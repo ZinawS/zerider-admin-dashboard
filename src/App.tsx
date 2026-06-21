@@ -17,6 +17,7 @@ import { AuditPage } from './pages/audit/AuditPage';
 import { AdminUsersPage } from './pages/admin-users/AdminUsersPage';
 import { ContentPage } from './pages/content/ContentPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { ConfigPage } from './pages/settings/ConfigPage';
 import { GamificationPage } from './pages/gamification/GamificationPage';
 import { DeliveryPage } from './pages/delivery/DeliveryPage';
 import { WalletPage } from './pages/wallet/WalletPage';
@@ -56,6 +57,7 @@ export function App(): JSX.Element {
         <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/revenue/commission" element={<CommissionPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/config" element={<ConfigPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>

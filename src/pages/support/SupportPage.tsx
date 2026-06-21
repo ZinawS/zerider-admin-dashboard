@@ -4,6 +4,7 @@ import { api } from '../../api/client.js';
 import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { useToast } from '../../components/Toast.js';
+import { QueryError } from '../../components/QueryError.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -501,7 +502,7 @@ export function SupportPage(): JSX.Element {
   const rqs = regionCode ? `&region=${regionCode}` : '';
 
   // Fetch both so KPI row has data
-  const { data: riderData, isLoading: riderLoading } = useQuery({
+  const { data: riderData, isLoading: riderLoading, isError: riderError, refetch: riderRefetch } = useQuery({
     queryKey: ['support-tickets', 'rider', '', regionCode],
     queryFn: () =>
       api<TicketsResponse>(`/v1/admin/rider-support/tickets?limit=100&offset=0${rqs}`),
@@ -513,6 +514,8 @@ export function SupportPage(): JSX.Element {
       api<TicketsResponse>(`/v1/admin/driver-support/tickets?limit=100&offset=0${rqs}`),
     staleTime: 30_000,
   });
+
+  if (riderError) return <QueryError onRetry={() => riderRefetch()} />;
 
   return (
     <>

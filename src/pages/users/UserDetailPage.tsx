@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { QueryError } from '../../components/QueryError.js';
 
 // import.meta.env may not be typed in some TS configs; cast to any to avoid errors
 const API_URL =
@@ -33,7 +34,7 @@ interface TripRow {
   created_at: string;
   role: 'rider' | 'driver';
 }
-type Tab = 'overview' | 'trips' | 'deliveries' | 'payments' | 'vehicles' | 'documents';
+type Tab = 'overview' | 'trips' | 'deliveries' | 'payments' | 'wallet' | 'support' | 'ratings' | 'payouts' | 'vehicles' | 'documents';
 
 function fmtUsd(cents: number | null | undefined) {
   return `$${(Number(cents ?? 0) / 100).toFixed(2)}`;
@@ -133,8 +134,8 @@ export function UserDetailPage(): JSX.Element {
     detail.driver?.auth_status === 'suspended' ||
     detail.rider?.status === 'suspended';
   const tabs: Tab[] = detail.driver
-    ? ['overview', 'trips', 'deliveries', 'payments', 'vehicles', 'documents']
-    : ['overview', 'trips', 'deliveries', 'payments'];
+    ? ['overview', 'trips', 'deliveries', 'payments', 'wallet', 'support', 'ratings', 'payouts', 'vehicles', 'documents']
+    : ['overview', 'trips', 'deliveries', 'payments', 'wallet', 'support', 'ratings'];
 
   return (
     <div>
@@ -247,6 +248,10 @@ export function UserDetailPage(): JSX.Element {
       {tab === 'trips' && <TripsTab userId={id} />}
       {tab === 'deliveries' && <DeliveriesTab userId={id} />}
       {tab === 'payments' && <PaymentsTab userId={id} />}
+      {tab === 'wallet' && <WalletTab userId={id} />}
+      {tab === 'support' && <SupportTab userId={id} roles={detail.roles} />}
+      {tab === 'ratings' && <RatingsTab userId={id} />}
+      {tab === 'payouts' && detail.roles.includes('driver') && <PayoutsTab userId={id} />}
       {tab === 'vehicles' && detail.driver && <VehiclesTab vehicles={detail.vehicles} />}
       {tab === 'documents' && detail.driver && (
         <DocumentsTab documents={detail.documents} userId={id} />
@@ -513,6 +518,260 @@ function PaymentsTab({ userId }: { userId: string }) {
               </td>
               <td className="px-3 py-2 text-right text-ink">{fmtUsd(t.amount_cents)}</td>
               <td className="px-3 py-2 text-muted text-xs">{t.reference_id ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function WalletTab({ userId }: { userId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-user-wallet', userId],
+    queryFn: () => api<{ items: any[]; total: number }>(`/v1/admin/wallet/ledger?userId=${userId}&limit=50`),
+  });
+  if (isLoading) return <div className="text-muted">Loading wallet…</div>;
+  const items = data?.items ?? [];
+  if (!items.length) return <div className="text-muted">No wallet transactions found.</div>;
+  return (
+    <div className="bg-white border border-border rounded overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-surface text-muted text-xs uppercase">
+          <tr>
+            <th className="text-left px-3 py-2">Date</th>
+            <th className="text-left px-3 py-2">Type</th>
+            <th className="text-left px-3 py-2">Service</th>
+            <th className="text-right px-3 py-2">Amount</th>
+            <th className="text-right px-3 py-2">Balance</th>
+            <th className="text-left px-3 py-2">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((e) => {
+            const isCredit = e.entry_type === 'credit';
+            return (
+              <tr key={e.id} className="border-t border-border">
+                <td className="px-3 py-2 text-muted text-xs whitespace-nowrap">
+                  {new Date(e.created_at).toLocaleString()}
+                </td>
+                <td className="px-3 py-2">
+                  <span className={'px-2 py-0.5 rounded-full text-xs ' + (isCredit ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger')}>
+                    {e.entry_type ?? e.type ?? '—'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-muted text-xs capitalize">
+                  {(e.service_type ?? '').replace(/_/g, ' ') || '—'}
+                </td>
+                <td className={'px-3 py-2 text-right font-medium ' + (isCredit ? 'text-success' : 'text-danger')}>
+                  {isCredit ? '+' : '-'}{fmtUsd(Math.abs(Number(e.amount_cents ?? 0)))}
+                </td>
+                <td className="px-3 py-2 text-right text-ink">
+                  {e.balance_after_cents != null ? fmtUsd(e.balance_after_cents) : '—'}
+                </td>
+                <td className="px-3 py-2 text-muted text-xs">{e.description ?? e.reference_id ?? '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SupportTab({ userId, roles }: { userId: string; roles: string[] }) {
+  const isRider = roles.includes('rider');
+  const isDriver = roles.includes('driver') || roles.includes('delivery');
+  const { data: riderTickets, isLoading: rLoading } = useQuery({
+    queryKey: ['admin-user-rider-support', userId],
+    queryFn: () => api<{ tickets: any[] }>(`/v1/admin/rider-support/tickets?userId=${userId}&limit=50`),
+    enabled: isRider,
+  });
+  const { data: driverTickets, isLoading: dLoading } = useQuery({
+    queryKey: ['admin-user-driver-support', userId],
+    queryFn: () => api<{ tickets: any[] }>(`/v1/admin/driver-support/tickets?userId=${userId}&limit=50`),
+    enabled: isDriver,
+  });
+  if (rLoading || dLoading) return <div className="text-muted">Loading support tickets…</div>;
+  const allTickets = [
+    ...(riderTickets?.tickets ?? []).map((t) => ({ ...t, _role: 'rider' })),
+    ...(driverTickets?.tickets ?? []).map((t) => ({ ...t, _role: 'driver' })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  if (!allTickets.length) return <div className="text-muted">No support tickets found.</div>;
+
+  const statusColor = (s: string) =>
+    s === 'open' ? 'bg-blue-100 text-blue-800'
+    : s === 'resolved' || s === 'closed' ? 'bg-success/10 text-success'
+    : 'bg-yellow-100 text-yellow-800';
+
+  return (
+    <div className="space-y-2">
+      {allTickets.map((t) => (
+        <div key={t.id} className="bg-white border border-border rounded p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full capitalize">{t._role}</span>
+                {t.category && <span className="text-xs text-muted capitalize">{t.category.replace(/_/g, ' ')}</span>}
+                <span className={'text-xs px-2 py-0.5 rounded-full capitalize ' + statusColor(t.status)}>{t.status}</span>
+                {t.priority && t.priority !== 'normal' && (
+                  <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full capitalize">{t.priority}</span>
+                )}
+              </div>
+              <div className="text-sm font-medium text-ink mt-1">{t.subject || '(no subject)'}</div>
+              {t.description && (
+                <div className="text-xs text-muted mt-0.5 line-clamp-2">{t.description}</div>
+              )}
+              {t.resolution && (
+                <div className="text-xs text-success mt-0.5">Resolution: {t.resolution}</div>
+              )}
+            </div>
+            <div className="text-xs text-muted whitespace-nowrap">{new Date(t.created_at).toLocaleDateString()}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface RatingRow {
+  id: string;
+  ride_id: string;
+  rater_role: 'rider' | 'driver';
+  overall_rating: number;
+  categories: Record<string, number> | null;
+  comment: string | null;
+  created_at: string;
+}
+
+function RatingsTab({ userId }: { userId: string }) {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin-user-ratings', userId],
+    queryFn: () => api<{ items: RatingRow[] }>(`/v1/admin/users/${userId}/ratings`),
+  });
+  if (isLoading) return <div className="text-muted">Loading ratings…</div>;
+  if (isError) return <QueryError onRetry={() => refetch()} />;
+  const items = data?.items ?? [];
+  if (!items.length) return <div className="text-muted">No ratings found.</div>;
+
+  const byRole: Record<string, RatingRow[]> = {};
+  for (const r of items) {
+    const role = r.rater_role;
+    if (!byRole[role]) byRole[role] = [];
+    byRole[role].push(r);
+  }
+
+  return (
+    <div className="space-y-6">
+      {Object.entries(byRole).map(([role, rows]) => (
+        <div key={role}>
+          {Object.keys(byRole).length > 1 && (
+            <div className="text-xs uppercase text-muted mb-2 capitalize">As {role}</div>
+          )}
+          <div className="bg-white border border-border rounded overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-surface text-muted text-xs uppercase">
+                <tr>
+                  <th className="text-left px-3 py-2">Date</th>
+                  <th className="text-left px-3 py-2">Trip ID</th>
+                  <th className="text-left px-3 py-2">Role</th>
+                  <th className="text-left px-3 py-2">Overall</th>
+                  <th className="text-left px-3 py-2">Categories</th>
+                  <th className="text-left px-3 py-2">Comment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t border-border">
+                    <td className="px-3 py-2 text-muted text-xs whitespace-nowrap">
+                      {new Date(r.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-xs font-mono text-muted">{r.ride_id.slice(0, 8)}…</td>
+                    <td className="px-3 py-2 text-xs capitalize">{r.rater_role}</td>
+                    <td className="px-3 py-2">
+                      <span className="text-sm font-medium text-ink">★ {Number(r.overall_rating).toFixed(1)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted">
+                      {r.categories
+                        ? Object.entries(r.categories)
+                            .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                            .join(', ')
+                        : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted max-w-xs">
+                      {r.comment || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface PayoutRow {
+  id: string;
+  driver_id: string;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  provider_key: string | null;
+  provider_ref: string | null;
+  created_at: string;
+}
+
+function PayoutsTab({ userId }: { userId: string }) {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin-user-payouts', userId],
+    queryFn: () =>
+      api<{ items: PayoutRow[] }>(`/v1/admin/wallet/payouts?driverId=${userId}&limit=50`),
+  });
+  if (isLoading) return <div className="text-muted">Loading payouts…</div>;
+  if (isError) return <QueryError onRetry={() => refetch()} />;
+  const items = data?.items ?? [];
+  if (!items.length) return <div className="text-muted">No payout history found.</div>;
+
+  const STATUS_STYLES: Record<string, string> = {
+    pending: 'bg-yellow-100 text-yellow-800',
+    paid: 'bg-green-100 text-green-800',
+    failed: 'bg-red-100 text-red-800',
+  };
+
+  return (
+    <div className="bg-white border border-border rounded overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-surface text-muted text-xs uppercase">
+          <tr>
+            <th className="text-left px-3 py-2">Date</th>
+            <th className="text-right px-3 py-2">Amount</th>
+            <th className="text-left px-3 py-2">Status</th>
+            <th className="text-left px-3 py-2">Provider</th>
+            <th className="text-left px-3 py-2">Reference</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((p) => (
+            <tr key={p.id} className="border-t border-border">
+              <td className="px-3 py-2 text-muted text-xs whitespace-nowrap">
+                {new Date(p.created_at).toLocaleString()}
+              </td>
+              <td className="px-3 py-2 text-right font-medium">
+                {fmtUsd(p.amount_cents)} {p.currency}
+              </td>
+              <td className="px-3 py-2">
+                <span className={`px-2 py-0.5 rounded-full text-xs capitalize ${STATUS_STYLES[p.status] ?? 'bg-surface text-muted'}`}>
+                  {p.status}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-xs text-muted capitalize">
+                {p.provider_key?.replace(/_/g, ' ') || 'manual'}
+              </td>
+              <td className="px-3 py-2 text-xs text-muted font-mono">
+                {p.provider_ref || '—'}
+              </td>
             </tr>
           ))}
         </tbody>

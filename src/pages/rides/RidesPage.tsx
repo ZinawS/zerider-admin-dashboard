@@ -8,6 +8,7 @@ import { PageHeader } from '../../components/PageHeader.js';
 import { DateRangeFilter } from '../../components/DateRangeFilter.js';
 import { Pagination } from '../../components/Pagination.js';
 import { useDebounced } from '../../hooks/useDebounced.js';
+import { QueryError } from '../../components/QueryError.js';
 import { exportToCsv } from '../../lib/export.js';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -127,7 +128,7 @@ export function RidesPage(): JSX.Element {
   const regionCode = useRegionScope((s) => s.regionCode);
   const debounced = useDebounced(search, 300);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-rides', status, debounced, regionCode, vehicleCategory],
     queryFn: () => {
       const params = new URLSearchParams({ limit: '200' });
@@ -198,6 +199,8 @@ export function RidesPage(): JSX.Element {
       { header: 'ID', getValue: (r) => r.id },
     ]);
   };
+
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   return (
     <>

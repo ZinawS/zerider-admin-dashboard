@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader.js';
 import { Pagination } from '../../components/Pagination.js';
 import { useToast } from '../../components/Toast.js';
 import { useDebounced } from '../../hooks/useDebounced.js';
+import { QueryError } from '../../components/QueryError.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -655,7 +656,7 @@ function ListingsTab({ regionCode }: { regionCode: string | null }) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-marketplace-listings', status, type, debounced, page, regionCode],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
@@ -673,6 +674,8 @@ function ListingsTab({ regionCode }: { regionCode: string | null }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-marketplace-listings'] }),
     onError: (e: any) => toast('Approval failed: ' + (e?.message ?? 'unknown'), 'error'),
   });
+
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   const items = data?.data ?? [];
   const total = data?.total ?? items.length;

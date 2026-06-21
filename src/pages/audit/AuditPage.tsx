@@ -7,6 +7,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { DateRangeFilter } from '../../components/DateRangeFilter';
 import { Pagination } from '../../components/Pagination';
 import { exportToCsv } from '../../lib/export';
+import { QueryError } from '../../components/QueryError.js';
 
 interface AuditEntry {
   id: string;
@@ -58,7 +59,7 @@ export function AuditPage(): JSX.Element {
     return m;
   }, [adminUsersData]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['audit', eventType, actorId, rideId, regionCode],
     queryFn: () => {
       const params = new URLSearchParams({ limit: '500' });
@@ -81,6 +82,7 @@ export function AuditPage(): JSX.Element {
     });
   }, [allItems, dateFrom, dateTo]);
 
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   return (
     <>

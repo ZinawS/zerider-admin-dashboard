@@ -41,6 +41,7 @@ const NAV_BASE = [
   { to: '/marketplace', label: 'Marketplace' },
   { to: '/support', label: 'Support' },
   { to: '/settings', label: 'Settings' },
+  { to: '/settings/config', label: 'Configuration' },
 ];
 
 const REVENUE_NAV = [

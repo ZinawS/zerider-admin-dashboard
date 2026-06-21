@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { Table, type Column } from '../../components/Table';
 import { useDebounced } from '../../hooks/useDebounced';
 import { exportToCsv } from '../../lib/export';
+import { QueryError } from '../../components/QueryError.js';
 
 interface Region {
   code: string;
@@ -31,7 +32,7 @@ export function RegionsPage(): JSX.Element {
   const [activeOnly, setActiveOnly] = useState(false);
   const debouncedSearch = useDebounced(search);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['regions'],
     queryFn: () => api<ListResponse>('/v1/admin/regions'),
   });
@@ -91,6 +92,8 @@ export function RegionsPage(): JSX.Element {
       ),
     },
   ];
+
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   return (
     <>

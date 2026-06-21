@@ -7,6 +7,7 @@ import { Table, type Column } from '../../components/Table';
 import { useDebounced } from '../../hooks/useDebounced';
 import { useSort } from '../../hooks/useSort';
 import { exportToCsv } from '../../lib/export';
+import { QueryError } from '../../components/QueryError.js';
 
 interface Promotion {
   id: string;
@@ -299,6 +300,8 @@ export function PricingPage(): JSX.Element {
       ),
     },
   ];
+
+  if (rules.isError) return <QueryError onRetry={() => rules.refetch()} />;
 
   return (
     <>

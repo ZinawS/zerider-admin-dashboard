@@ -8,6 +8,7 @@ import { api } from '../../api/client.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { DateRangeFilter } from '../../components/DateRangeFilter.js';
 import { useRegionScope } from '../../stores/region-scope.store.js';
+import { QueryError } from '../../components/QueryError.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ export function AnalyticsPage(): JSX.Element {
 
   const qs = `?from=${from}&to=${to}${regionCode ? `&region=${regionCode}` : ''}`;
 
-  const { data: dash, isLoading: dashLoading } = useQuery({
+  const { data: dash, isLoading: dashLoading, isError: dashError, refetch: dashRefetch } = useQuery({
     queryKey: ['analytics-dashboard', from, to, regionCode],
     queryFn: () => api<DashboardData>(`/v1/analytics/dashboard${qs}`),
     staleTime: 2 * 60_000,
@@ -195,6 +196,8 @@ export function AnalyticsPage(): JSX.Element {
     staleTime: 2 * 60_000,
     retry: 1,
   });
+
+  if (dashError) return <QueryError onRetry={() => dashRefetch()} />;
 
   const ridesByDay = dash?.rides_by_day ?? [];
   const delivsByDay = dash?.deliveries_by_day ?? [];

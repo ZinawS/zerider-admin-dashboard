@@ -10,6 +10,7 @@ import { DateRangeFilter } from '../../components/DateRangeFilter';
 import { useDebounced } from '../../hooks/useDebounced';
 import { useSort } from '../../hooks/useSort';
 import { exportToCsv } from '../../lib/export';
+import { QueryError } from '../../components/QueryError.js';
 
 interface RiderRow {
   id: string;
@@ -54,7 +55,7 @@ export function UsersPage(): JSX.Element {
   const [page, setPage] = useState(1);
   const debounced = useDebounced(search);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-riders', debounced, status, regionCode],
     queryFn: () => {
       const params = new URLSearchParams({ role: 'rider', limit: '200' });
@@ -76,6 +77,8 @@ export function UsersPage(): JSX.Element {
   }, [allItems, dateFrom, dateTo]);
 
   const { sort, toggle, sorted } = useSort(dateFiltered, sortVal);
+
+  if (isError) return <QueryError onRetry={() => refetch()} />;
 
   const pageItems = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 

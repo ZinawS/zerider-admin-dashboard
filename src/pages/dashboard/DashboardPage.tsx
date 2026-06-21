@@ -1,5 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 import { api } from '../../api/client';
 import { useRegionScope } from '../../stores/region-scope.store';
 import { PageHeader } from '../../components/PageHeader';
@@ -267,6 +270,21 @@ export function DashboardPage(): JSX.Element {
     }, 0);
   const deliveryPayoutCents = deliveryRevenueCents - deliveryCommissionCents;
 
+  // Compute delivery counts by day for the trend chart (last 14 days)
+  const deliveryTrend = (() => {
+    const days: Record<string, { count: number; revenue: number }> = {};
+    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    for (const d of deliveries) {
+      const ts = new Date(d.created_at).getTime();
+      if (ts < cutoff) continue;
+      const key = new Date(d.created_at).toISOString().slice(5, 10); // MM-DD
+      if (!days[key]) days[key] = { count: 0, revenue: 0 };
+      days[key].count++;
+      if (d.status === 'delivered') days[key].revenue += Number(d.total_cents ?? d.fare_cents ?? 0);
+    }
+    return Object.entries(days).sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, ...v }));
+  })();
+
   const recentDeliveries = [...deliveries].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6);
 
   const marketplaceRevenueCents = Number(marketplaceRevenue?.totals?.total_revenue_cents ?? 0);
@@ -333,6 +351,26 @@ export function DashboardPage(): JSX.Element {
         <Kpi label="Delivery payouts" value={fmtEtb(deliveryPayoutCents)} sub="paid to drivers (ETB)" />
         <Kpi label="Delivery growth" value={totalDeliveries > 0 ? `${((completedDeliveries / totalDeliveries) * 100).toFixed(0)}%` : '—'} sub="completion rate" />
       </div>
+
+      {/* Delivery trend chart */}
+      {deliveryTrend.length > 1 && (
+        <div className="bg-white border border-border rounded p-4 mb-3">
+          <div className="text-xs uppercase text-muted mb-3">Delivery volume — last 14 days (from recent 200 records)</div>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={deliveryTrend} margin={{ top: 0, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+              <Tooltip
+                formatter={(v: number, name: string) =>
+                  name === 'count' ? [v, 'Deliveries'] : [fmtEtb(v), 'Revenue (ETB)']
+                }
+              />
+              <Bar dataKey="count" fill="#6366f1" name="count" radius={[2, 2, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Marketplace KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

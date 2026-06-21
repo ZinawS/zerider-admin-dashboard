@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useRegionScope } from '../../stores/region-scope.store.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Pagination } from '../../components/Pagination.js';
 import { useDebounced } from '../../hooks/useDebounced.js';
+import { useToast } from '../../components/Toast.js';
 
 interface Delivery {
   id: string;
@@ -135,9 +136,14 @@ function fmtCents(c: number | null | undefined, currency = 'ETB') {
 
 const PAGE_SIZE = 25;
 
+const ADMIN_STATUSES = ['pending', 'assigned', 'picked_up', 'in_transit', 'delivered', 'failed', 'cancelled'];
+const CANCELLABLE = new Set(['pending', 'assigned', 'picked_up']);
+const ASSIGNABLE  = new Set(['pending']);
+
 interface DetailPanelProps {
   delivery: Delivery;
   onClose: () => void;
+  onUpdated: () => void;
 }
 
 function DetailRow({ label, value }: { label: string; value?: string | null | number | boolean }) {
@@ -150,7 +156,38 @@ function DetailRow({ label, value }: { label: string; value?: string | null | nu
   );
 }
 
-function DeliveryDetailPanel({ delivery, onClose }: DetailPanelProps): JSX.Element {
+function DeliveryDetailPanel({ delivery, onClose, onUpdated }: DetailPanelProps): JSX.Element {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [assignDriverId, setAssignDriverId] = useState('');
+  const [showAssign, setShowAssign] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [showCancel, setShowCancel] = useState(false);
+  const [newStatus, setNewStatus] = useState('');
+  const [showStatus, setShowStatus] = useState(false);
+
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['admin-deliveries'] }); onUpdated(); };
+
+  const cancelMutation = useMutation({
+    mutationFn: () => api(`/v1/admin/deliveries/${delivery.id}/cancel`, { method: 'POST', body: { reason: cancelReason || 'Admin cancellation' } }),
+    onSuccess: () => { toast('Delivery cancelled.', 'success'); setShowCancel(false); refresh(); },
+    onError: (e: any) => toast('Cancel failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: () => api(`/v1/admin/deliveries/${delivery.id}/assign`, { method: 'POST', body: { driver_id: assignDriverId } }),
+    onSuccess: () => { toast('Driver assigned.', 'success'); setShowAssign(false); setAssignDriverId(''); refresh(); },
+    onError: (e: any) => toast('Assign failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: () => api(`/v1/admin/deliveries/${delivery.id}/status`, { method: 'PATCH', body: { status: newStatus } }),
+    onSuccess: () => { toast(`Status set to ${newStatus}.`, 'success'); setShowStatus(false); setNewStatus(''); refresh(); },
+    onError: (e: any) => toast('Status update failed: ' + (e?.message ?? 'unknown'), 'error'),
+  });
+
+  const busy = cancelMutation.isPending || assignMutation.isPending || statusMutation.isPending;
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-end z-50" onClick={onClose}>
       <div
@@ -299,6 +336,113 @@ function DeliveryDetailPanel({ delivery, onClose }: DetailPanelProps): JSX.Eleme
               <DetailRow label="Tracking Points" value={delivery.tracking_points_count} />
             </div>
           )}
+
+          {/* Admin Actions */}
+          <div>
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Admin Actions</div>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {ASSIGNABLE.has(delivery.status) && (
+                <button
+                  onClick={() => { setShowAssign((v) => !v); setShowCancel(false); setShowStatus(false); }}
+                  disabled={busy}
+                  className="px-3 py-1.5 text-xs bg-accent text-white rounded disabled:opacity-40"
+                >
+                  Assign Driver
+                </button>
+              )}
+              {CANCELLABLE.has(delivery.status) && (
+                <button
+                  onClick={() => { setShowCancel((v) => !v); setShowAssign(false); setShowStatus(false); }}
+                  disabled={busy}
+                  className="px-3 py-1.5 text-xs bg-danger text-white rounded disabled:opacity-40"
+                >
+                  Cancel Delivery
+                </button>
+              )}
+              <button
+                onClick={() => { setShowStatus((v) => !v); setShowAssign(false); setShowCancel(false); }}
+                disabled={busy}
+                className="px-3 py-1.5 text-xs border border-border rounded disabled:opacity-40"
+              >
+                Override Status
+              </button>
+            </div>
+
+            {/* Inline assign form */}
+            {showAssign && (
+              <div className="bg-surface rounded p-3 mb-2">
+                <div className="text-xs text-muted mb-1">Driver UUID</div>
+                <input
+                  type="text"
+                  value={assignDriverId}
+                  onChange={(e) => setAssignDriverId(e.target.value)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="w-full px-2 py-1.5 bg-white text-ink border border-border rounded text-xs mb-2"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => assignMutation.mutate()}
+                    disabled={!assignDriverId.trim() || busy}
+                    className="px-3 py-1 text-xs bg-accent text-white rounded disabled:opacity-40"
+                  >
+                    {assignMutation.isPending ? 'Assigning…' : 'Assign'}
+                  </button>
+                  <button onClick={() => setShowAssign(false)} className="px-3 py-1 text-xs border border-border rounded">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Inline cancel form */}
+            {showCancel && (
+              <div className="bg-red-50 rounded p-3 mb-2">
+                <div className="text-xs text-muted mb-1">Cancellation reason (optional)</div>
+                <input
+                  type="text"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="e.g. Customer requested, driver unavailable"
+                  className="w-full px-2 py-1.5 bg-white text-ink border border-border rounded text-xs mb-2"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => cancelMutation.mutate()}
+                    disabled={busy}
+                    className="px-3 py-1 text-xs bg-danger text-white rounded disabled:opacity-40"
+                  >
+                    {cancelMutation.isPending ? 'Cancelling…' : 'Confirm Cancel'}
+                  </button>
+                  <button onClick={() => setShowCancel(false)} className="px-3 py-1 text-xs border border-border rounded">Back</button>
+                </div>
+              </div>
+            )}
+
+            {/* Inline status override */}
+            {showStatus && (
+              <div className="bg-surface rounded p-3 mb-2">
+                <div className="text-xs text-muted mb-1">New status</div>
+                <select
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.target.value)}
+                  className="w-full px-2 py-1.5 bg-white text-ink border border-border rounded text-xs mb-2"
+                >
+                  <option value="">Select status…</option>
+                  {ADMIN_STATUSES.filter((s) => s !== delivery.status).map((s) => (
+                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => statusMutation.mutate()}
+                    disabled={!newStatus || busy}
+                    className="px-3 py-1 text-xs bg-accent text-white rounded disabled:opacity-40"
+                  >
+                    {statusMutation.isPending ? 'Saving…' : 'Set Status'}
+                  </button>
+                  <button onClick={() => setShowStatus(false)} className="px-3 py-1 text-xs border border-border rounded">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -338,6 +482,7 @@ export function DeliveryPage(): JSX.Element {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Delivery | null>(null);
+  const qc = useQueryClient();
   const regionCode = useRegionScope((s) => s.regionCode);
   const debounced = useDebounced(search, 300);
   const { statuses, serviceTypes } = useDeliveryConfig();
@@ -503,7 +648,11 @@ export function DeliveryPage(): JSX.Element {
       <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
 
       {selected && (
-        <DeliveryDetailPanel delivery={selected} onClose={() => setSelected(null)} />
+        <DeliveryDetailPanel
+          delivery={selected}
+          onClose={() => setSelected(null)}
+          onUpdated={() => qc.invalidateQueries({ queryKey: ['admin-deliveries'] })}
+        />
       )}
     </>
   );
