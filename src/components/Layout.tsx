@@ -43,6 +43,7 @@ const NAV_BASE = [
   { to: '/merchant', label: 'Merchant' },
   { to: '/merchant/orders', label: 'Merchant Orders' },
   { to: '/merchant/management', label: 'Merchants' },
+  { to: '/merchant/catalog', label: 'Catalog' },
   { to: '/chat', label: 'Chat' },
   { to: '/support', label: 'Support' },
   { to: '/settings', label: 'Settings' },

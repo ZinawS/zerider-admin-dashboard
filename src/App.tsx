@@ -29,6 +29,7 @@ import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { MerchantPage } from './pages/merchant/MerchantPage';
 import { MerchantOrdersPage } from './pages/merchant/MerchantOrdersPage';
 import { MerchantManagementPage } from './pages/merchant/MerchantManagementPage';
+import { MerchantCatalogPage } from './pages/merchant/MerchantCatalogPage';
 import { ChatPage } from './pages/chat/ChatPage';
 import { DeliveryScheduledPage } from './pages/delivery-scheduled/DeliveryScheduledPage';
 import { useAuthStore } from './stores/auth.store';
@@ -62,6 +63,7 @@ export function App(): JSX.Element {
         <Route path="/merchant" element={<MerchantPage />} />
         <Route path="/merchant/orders" element={<MerchantOrdersPage />} />
         <Route path="/merchant/management" element={<MerchantManagementPage />} />
+        <Route path="/merchant/catalog" element={<MerchantCatalogPage />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/delivery/scheduled" element={<DeliveryScheduledPage />} />
         <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
