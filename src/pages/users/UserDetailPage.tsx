@@ -6,7 +6,7 @@ import { QueryError } from '../../components/QueryError.js';
 
 // import.meta.env may not be typed in some TS configs; cast to any to avoid errors
 const API_URL =
-  ((import.meta as any).env?.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+  ((import.meta as any).env?.VITE_API_URL as string | undefined) ?? '';
 
 function docFileUrl(doc: { id: string; storage_url?: string | null; file_url?: string | null }, download = false): string {
   const storageUrl = doc.storage_url || doc.file_url || '';

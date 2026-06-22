@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { PageHeader } from '../../components/PageHeader.js';
@@ -146,7 +147,7 @@ function CommissionConfigTab() {
   const qc = useQueryClient();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['config-drivers-commission'],
-    queryFn: () => api<{ items: DriverRow[] }>('/v1/admin/users/drivers?limit=200'),
+    queryFn: () => api<{ items: DriverRow[] }>('/v1/admin/drivers?limit=200'),
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -154,7 +155,7 @@ function CommissionConfigTab() {
 
   const updateDriver = useMutation({
     mutationFn: ({ id, commission_rate_bps }: { id: string; commission_rate_bps: number }) =>
-      api(`/v1/admin/users/drivers/${id}`, { method: 'PATCH', body: { commission_rate_bps } }),
+      api(`/v1/admin/drivers/${id}`, { method: 'PATCH', body: { commission_rate_bps } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['config-drivers-commission'] });
       setEditingId(null);
@@ -260,10 +261,96 @@ function CommissionConfigTab() {
 
 // ─── Incentives Tab ────────────────────────────────────────────────────────────
 
+interface Challenge {
+  id: string;
+  title: string;
+  description: string | null;
+  type: string;
+  target_value: number;
+  reward_type: string;
+  reward_amount: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_active: boolean;
+}
+
 function IncentivesTab() {
+  const qc = useQueryClient();
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['config-incentive-challenges'],
+    queryFn: () => api<{ items: Challenge[] }>('/v1/admin/gamification/challenges'),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      api(`/v1/admin/gamification/challenges/${id}`, { method: 'PATCH', body: { is_active } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['config-incentive-challenges'] }),
+  });
+
+  if (isLoading) return <div className="text-muted py-6">Loading incentive programs…</div>;
+  if (isError) return <QueryError onRetry={() => refetch()} />;
+
+  const items = data?.items ?? [];
+
   return (
-    <div className="bg-surface border border-border rounded p-6 text-center text-muted text-sm">
-      Incentive configuration coming soon — configure bonuses and promotions through the backend admin API.
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs text-muted">Driver incentive programs and challenges. Full management available in <Link to="/gamification" className="text-accent underline">Gamification</Link>.</div>
+      </div>
+      {items.length === 0 ? (
+        <div className="bg-surface border border-border rounded p-6 text-center text-muted text-sm">
+          No incentive programs configured. Create challenges in the{' '}
+          <Link to="/gamification" className="text-accent underline">Gamification</Link> page.
+        </div>
+      ) : (
+        <div className="bg-white border border-border rounded overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-surface text-muted text-xs uppercase">
+              <tr>
+                <th className="text-left px-3 py-2">Title</th>
+                <th className="text-left px-3 py-2">Type</th>
+                <th className="text-right px-3 py-2">Target</th>
+                <th className="text-left px-3 py-2">Reward</th>
+                <th className="text-left px-3 py-2">Period</th>
+                <th className="text-center px-3 py-2">Active</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.id} className="border-t border-border hover:bg-surface/50">
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-ink">{c.title}</div>
+                    {c.description && <div className="text-xs text-muted truncate max-w-[240px]">{c.description}</div>}
+                  </td>
+                  <td className="px-3 py-2 text-xs capitalize text-muted">{c.type.replace(/_/g, ' ')}</td>
+                  <td className="px-3 py-2 text-right text-xs">{c.target_value}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <span className="capitalize">{c.reward_type.replace(/_/g, ' ')}</span>
+                    <span className="ml-1 font-medium text-success">
+                      {c.reward_type === 'cash' ? `$${(c.reward_amount / 100).toFixed(2)}` : `×${c.reward_amount}`}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted">
+                    {c.starts_at ? new Date(c.starts_at).toLocaleDateString() : '—'}
+                    {' → '}
+                    {c.ends_at ? new Date(c.ends_at).toLocaleDateString() : 'ongoing'}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <button
+                      onClick={() => toggleActive.mutate({ id: c.id, is_active: !c.is_active })}
+                      disabled={toggleActive.isPending}
+                      className={`w-10 h-5 rounded-full transition-colors relative disabled:opacity-50 ${c.is_active ? 'bg-success' : 'bg-border'}`}
+                      title={c.is_active ? 'Active — click to disable' : 'Inactive — click to enable'}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${c.is_active ? 'right-0.5' : 'left-0.5'}`} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -82,7 +82,7 @@ interface Document {
   created_at: string;
 }
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 // Build a URL for serving document files. If storage_url is an external URL
 // (e.g. from ngrok), return it directly; otherwise route through the admin proxy.
