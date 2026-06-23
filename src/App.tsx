@@ -31,6 +31,7 @@ import { MerchantOrdersPage } from './pages/merchant/MerchantOrdersPage';
 import { MerchantManagementPage } from './pages/merchant/MerchantManagementPage';
 import { MerchantCatalogPage } from './pages/merchant/MerchantCatalogPage';
 import { ChatPage } from './pages/chat/ChatPage';
+import { ChatModerationPage } from './pages/chat/ChatModerationPage';
 import { DeliveryScheduledPage } from './pages/delivery-scheduled/DeliveryScheduledPage';
 import { useAuthStore } from './stores/auth.store';
 
@@ -65,6 +66,7 @@ export function App(): JSX.Element {
         <Route path="/merchant/management" element={<MerchantManagementPage />} />
         <Route path="/merchant/catalog" element={<MerchantCatalogPage />} />
         <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/moderation" element={<ChatModerationPage />} />
         <Route path="/delivery/scheduled" element={<DeliveryScheduledPage />} />
         <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/revenue/commission" element={<CommissionPage />} />
