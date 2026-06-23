@@ -32,6 +32,8 @@ import { MerchantManagementPage } from './pages/merchant/MerchantManagementPage'
 import { MerchantCatalogPage } from './pages/merchant/MerchantCatalogPage';
 import { ChatPage } from './pages/chat/ChatPage';
 import { ChatModerationPage } from './pages/chat/ChatModerationPage';
+import { NotificationsPage } from './pages/notifications/NotificationsPage';
+import { PromosPage } from './pages/promos/PromosPage';
 import { DeliveryScheduledPage } from './pages/delivery-scheduled/DeliveryScheduledPage';
 import { useAuthStore } from './stores/auth.store';
 
@@ -70,6 +72,8 @@ export function App(): JSX.Element {
         <Route path="/delivery/scheduled" element={<DeliveryScheduledPage />} />
         <Route path="/revenue/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/revenue/commission" element={<CommissionPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/promos" element={<PromosPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/config" element={<ConfigPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

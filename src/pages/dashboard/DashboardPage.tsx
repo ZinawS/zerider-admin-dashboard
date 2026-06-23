@@ -223,7 +223,7 @@ export function DashboardPage(): JSX.Element {
 
   const { data: rideRevenueHistory } = useQuery({
     queryKey: ['dashboard-ride-revenue-alltime', regionCode],
-    queryFn: () => api<any[]>(`/v1/admin/rides/reports/revenue?start=2024-01-01T00:00:00Z&end=${new Date().toISOString()}${rAmp}`),
+    queryFn: () => { const start = new Date(); start.setMonth(start.getMonth() - 12); return api<any[]>(`/v1/admin/rides/reports/revenue?start=${start.toISOString()}&end=${new Date().toISOString()}${rAmp}`); },
     staleTime: 5 * 60 * 1000,
     refetchInterval: 300_000,
   });

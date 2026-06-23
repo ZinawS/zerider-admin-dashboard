@@ -44,6 +44,8 @@ const NAV_BASE = [
   { to: '/merchant/orders', label: 'Merchant Orders' },
   { to: '/merchant/management', label: 'Merchants' },
   { to: '/merchant/catalog', label: 'Catalog' },
+  { to: '/notifications', label: 'Notifications' },
+  { to: '/promos', label: 'Promo Codes' },
   { to: '/chat', label: 'Chat Analytics' },
   { to: '/chat/moderation', label: 'Chat Moderation' },
   { to: '/support', label: 'Support' },
